@@ -14,10 +14,10 @@ from transformers import get_linear_schedule_with_warmup
 
 from tqdm import tqdm
 
-from src.kobert.utils import get_tokenizer
-from src.kobert.pytorch_kobert import get_pytorch_kobert_model, get_kobert_model
-from src.data.utils import SegmentedArticlesDataset, BERTDataset
-from src.data.article_loader import BERTOutputSequence
+from article_sentiment.kobert.utils import get_tokenizer
+from article_sentiment.kobert.pytorch_kobert import get_pytorch_kobert_model, get_kobert_model
+from article_sentiment.data.utils import SegmentedArticlesDataset, BERTDataset
+from article_sentiment.data.article_loader import BERTOutputSequence
 
 
 parser = argparse.ArgumentParser()

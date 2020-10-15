@@ -14,8 +14,8 @@ from tqdm import tqdm
 # In[2]:
 
 
-from src.kobert import get_tokenizer
-from src.kobert import get_pytorch_kobert_model
+from article_sentiment.kobert import get_tokenizer
+from article_sentiment.kobert import get_pytorch_kobert_model
 
 # In[3]:
 
