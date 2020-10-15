@@ -33,6 +33,7 @@ parser.add_argument('--test_run', help="test run the code on small sample (2 lin
 args = parser.parse_args()
 
 
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger('train.py')
 logger.setLevel(logging.DEBUG)
 
@@ -110,6 +111,7 @@ def calc_accuracy(X, Y):
 
 if __name__ == '__main__':
     # Check arg validity
+    logger.info('Starting...')
     if args.fine_tune:
         save_dir = Path(args.fine_tune_save).parent
         if not os.path.isdir(save_dir):
@@ -121,6 +123,10 @@ if __name__ == '__main__':
         if not os.path.isdir(save_dir):
             raise ValueError(
                 f"Check the path in --fine_tune_save option. Directory does not exist: {save_dir}")
+
+    logger.info(f"Args: device={args.device}, test_run={args.test_run}, "
+                f"fine_tune={args.fine_tune}, fine_tune_save={args.fine_tune_save}, "
+                 f"robert={args.robert}, clf_save={args.clf_save}")
 
     input_size = 768
     segment_len = 200
@@ -134,10 +140,13 @@ if __name__ == '__main__':
     learning_rate = 5e-5
 
     # Load model
+    logger.info("Loading KoBERT...")
     bertmodel, vocab = get_pytorch_kobert_model()
+    logger.info("Successfully loaded KoBERT.")
 
     # Load data
     data_path = '../data/processed/201003_labelled_{}.csv'
+    logger.info(f"Loading data at {data_path}")
 
     if args.test_run:
         n_train_discard = 132
@@ -154,21 +163,26 @@ if __name__ == '__main__':
 
     robert_data_train = SegmentedArticlesDataset(dataset_train, tok, segment_len, overlap, True, False)
     robert_data_test = SegmentedArticlesDataset(dataset_test, tok, segment_len, overlap, True, False)
+    logger.info("Successfully loaded data. Articles are segmented and tokenized.")
 
     # Set device
+    logger.info(f"Set device to {args.device}")
     device = torch.device(args.device)
 
     # 1. Fine-tune BERT ################################################################################################
     if args.fine_tune:
+        logger.info("Fine-tuning KoBERT on data!")
         # 1.1 Load data
         data_train = BERTDataset.create_from_segmented(robert_data_train)
         data_test = BERTDataset.create_from_segmented(robert_data_test)
 
         train_dataloader = torch.utils.data.DataLoader(data_train, batch_size=batch_size, num_workers=4)
         test_dataloader = torch.utils.data.DataLoader(data_test, batch_size=batch_size, num_workers=4)
+        logger.info("Created data for KoBERT fine-tuning.")
 
         # 1.2 Set up classifier model.
         clf_model = BERTClassifier(bertmodel, dr_rate=0.5).to(device)
+        logger.info("KoBERT Classifier is instantiated.")
 
         # 1.3 Set up training parameters
         #       Prepare optimizer and schedule (linear warmup and decay)
@@ -188,6 +202,7 @@ if __name__ == '__main__':
         scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_step, num_training_steps=t_total)
 
         # 1.4 TRAIN!!!
+        logger.info("Begin training")
         for e in range(num_epochs_fine_tune):
             train_acc = 0.0
             test_acc = 0.0
@@ -206,12 +221,12 @@ if __name__ == '__main__':
                 scheduler.step()  # Update learning rate schedule
                 train_acc += calc_accuracy(out, label)
                 if batch_id % log_interval == 0:
-                    print("epoch {} batch id {} loss {} train acc {}".format(e + 1, batch_id + 1, loss.data.cpu().numpy(),
+                    logger.info("epoch {} batch id {} loss {} train acc {}".format(e + 1, batch_id + 1, loss.data.cpu().numpy(),
                                                                              train_acc / (batch_id + 1)))
                     torch.save(clf_model.state_dict, args.fine_tune_save)
                     torch.save(optimizer.state_dict, args.fine_tune_save.split('.')[0] + '_optimizer.dict')
 
-            print("epoch {} train acc {}".format(e + 1, train_acc / (batch_id + 1)))
+            logger.info("epoch {} train acc {}".format(e + 1, train_acc / (batch_id + 1)))
             clf_model.eval()
             for batch_id, (token_ids, valid_length, segment_ids, label) in enumerate(tqdm(test_dataloader)):
                 token_ids = token_ids.long().to(device)
@@ -220,12 +235,13 @@ if __name__ == '__main__':
                 label = label.long().to(device)
                 out = clf_model(token_ids, valid_length, segment_ids)
                 test_acc += calc_accuracy(out, label)
-            print("epoch {} test acc {}".format(e + 1, test_acc / (batch_id + 1)))
+            logger.info("epoch {} test acc {}".format(e + 1, test_acc / (batch_id + 1)))
 
         torch.save(clf_model.state_dict, args.fine_tune_save)
 
     # 2. Train Recurrence over BERT ####################################################################################
     if args.robert:
+        logger.info("Train RoBERT...")
         # 2.1 Set up parameters
         input_size = 768
         max_num_tokens = 9000
@@ -248,6 +264,7 @@ if __name__ == '__main__':
             fc_hidden_size=fc_hidden_size,
             dr_rate=0.5
         ).to(device)
+        logger.info("RoBERT is instantiated.")
 
         # 2.3 Set up training parameters
         no_decay = ['bias', 'LayerNorm.weight']
@@ -284,6 +301,7 @@ if __name__ == '__main__':
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.95, patience=3)
 
         # 2.5 TRAIN!!!
+        logger.info("Begin training")
         for e in range(num_epochs_lstm):
             train_acc = 0.0
             test_acc = 0.0
@@ -302,20 +320,20 @@ if __name__ == '__main__':
 
                 test_acc += calc_accuracy(lstm_out, label)
                 if batch_id % log_interval == 0:
-                    print("epoch {} batch id {} loss {} train acc {}".format(e + 1, batch_id + 1, loss.data.cpu().numpy(),
+                    logger.info("epoch {} batch id {} loss {} train acc {}".format(e + 1, batch_id + 1, loss.data.cpu().numpy(),
                                                                              train_acc / (batch_id + 1)))
 
                     torch.save(robert_model.state_dict, args.clf_save)
                     torch.save(optimizer.state_dict, args.clf_save.split('.')[0] + '_optimizer.dict')
 
-            print("epoch {} train acc {}".format(e + 1, train_acc / (batch_id + 1)))
+            logger.info("epoch {} train acc {}".format(e + 1, train_acc / (batch_id + 1)))
             robert_model.eval()
             for batch_id, (articles_seq, label) in enumerate(
                     tqdm(robert_test_dataloader)):
                 label = label.long().to(device)
                 lstm_out = robert_model(articles_seq)
                 test_acc += calc_accuracy(lstm_out, label)
-            print("epoch {} test acc {}".format(e + 1, test_acc / (batch_id + 1)))
+            logger.info("epoch {} test acc {}".format(e + 1, test_acc / (batch_id + 1)))
 
         # 2.6 Save
         torch.save(robert_model.state_dict(), args.clf_save)
