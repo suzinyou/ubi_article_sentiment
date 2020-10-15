@@ -241,6 +241,8 @@ if __name__ == '__main__':
             logger.info("epoch {} test acc {}".format(e + 1, test_acc / (batch_id + 1)))
 
         torch.save(clf_model.state_dict, args.fine_tune_save)
+        del clf_model.classifier, optimizer, scheduler, train_dataloader, test_dataloader, label, out, token_ids, segment_ids
+        torch.cuda.empty_cache()
 
     # 2. Train Recurrence over BERT ####################################################################################
     if args.robert:
