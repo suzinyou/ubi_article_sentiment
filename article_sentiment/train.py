@@ -22,7 +22,7 @@ from article_sentiment.data.article_loader import BERTOutputSequence
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--device', help="`cpu` vs `gpu`", choices=['cpu', 'gpu'], default='gpu')
+parser.add_argument('--device', help="`cpu` vs `gpu`", choices=['cpu', 'cuda'], default='cuda')
 parser.add_argument('--fine_tune', help="fine-tune BERT and save output", action='store_true')
 parser.add_argument('--fine_tune_save', help="save path for fine-tuned BERT classifier",
                     default=PROJECT_DIR / 'models' / 'bert_fine_tuned.dict', type=str)
