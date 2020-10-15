@@ -131,13 +131,14 @@ if __name__ == '__main__':
                 f"fine_tune={args.fine_tune}, fine_tune_save={args.fine_tune_save}, "
                  f"robert={args.robert}, clf_save={args.clf_save}")
 
+    num_workers = os.cpu_count()
     input_size = 768
     segment_len = 200
     overlap = 50
-    batch_size = 16
+    batch_size = 32
     warmup_ratio = 0.1
-    num_epochs_fine_tune = 1
-    num_epochs_lstm = 1
+    num_epochs_fine_tune = 5
+    num_epochs_lstm = 5
     max_grad_norm = 1
     log_interval = 10
     learning_rate = 5e-5
@@ -179,8 +180,8 @@ if __name__ == '__main__':
         data_train = BERTDataset.create_from_segmented(robert_data_train)
         data_test = BERTDataset.create_from_segmented(robert_data_test)
 
-        train_dataloader = torch.utils.data.DataLoader(data_train, batch_size=batch_size, num_workers=4)
-        test_dataloader = torch.utils.data.DataLoader(data_test, batch_size=batch_size, num_workers=4)
+        train_dataloader = torch.utils.data.DataLoader(data_train, batch_size=batch_size, num_workers=num_workers)
+        test_dataloader = torch.utils.data.DataLoader(data_test, batch_size=batch_size, num_workers=num_workers)
         logger.info("Created data for KoBERT fine-tuning.")
 
         # 1.2 Set up classifier model.
@@ -243,6 +244,7 @@ if __name__ == '__main__':
         torch.save(clf_model.state_dict, args.fine_tune_save)
         del clf_model.classifier, optimizer, scheduler, train_dataloader, test_dataloader, label, out, token_ids, segment_ids
         torch.cuda.empty_cache()
+        logger.debug(torch.cuda.memory_stats())
 
     # 2. Train Recurrence over BERT ####################################################################################
     if args.robert:
@@ -270,6 +272,7 @@ if __name__ == '__main__':
             dr_rate=0.5
         ).to(device)
         logger.info("RoBERT is instantiated.")
+        logger.debug(torch.cuda.memory_stats())
 
         # 2.3 Set up training parameters
         no_decay = ['bias', 'LayerNorm.weight']
@@ -295,7 +298,33 @@ if __name__ == '__main__':
         # TODO: use collate_fn argument in DataLoader to utilize multiprocessing etc?
         robert_train_dataloader = train_sequences
         robert_test_dataloader = test_sequences
-        # train_dataloader = torch.utils.data.DataLoader(train_sequences, collate_fn=)
+
+        # def collate(lot):
+        #     # lot = list of tuple (article, label)
+        #     articles = []
+        #     labels = []
+        #     for sample, label in lot:
+        #         bert_outputs = []
+        #         for token_ids, valid_length, segment_ids in sample:
+        #             token_ids = torch.reshape(torch.Tensor(token_ids), (1, -1)).long().to(device)
+        #             segment_ids = torch.reshape(torch.Tensor(segment_ids), (1, -1)).long().to(device)
+        #             valid_length = valid_length.reshape(1, )
+        #
+        #             # Get BERT output (batch_size, 768)
+        #             # TODO: token ids, etc. must have ndim=2 !!!
+        #             attention_mask = clf_model.gen_attention_mask(token_ids, valid_length)
+        #             _, pooler = clf_model.bert(input_ids=token_ids, token_type_ids=segment_ids.long(),
+        #                                       attention_mask=attention_mask.float().to(token_ids.device))
+        #             bert_outputs.append(pooler)
+        #         bert_output_seq = torch.cat(bert_outputs)
+        #         articles.append(bert_output_seq)
+        #         labels.append(label)
+        #     articles = torch.nn.utils.rnn.pad_sequence(articles)
+        #     labels = torch.Tensor(labels)
+        #     return articles.float(), labels.long()
+        #
+        # robert_train_dataloader = torch.utils.data.DataLoader(robert_data_train, collate_fn=collate, batch_size=batch_size, num_workers=num_workers)
+        # robert_test_dataloader = torch.utils.data.DataLoader(robert_data_test, collate_fn=collate, batch_size=batch_size, num_workers=num_workers)
 
         t_total = len(robert_train_dataloader) * num_epochs_fine_tune
         warmup_step = int(t_total * warmup_ratio)
