@@ -10,8 +10,8 @@ class BERTOutputSequence(object):
         for sample, label in dataset:
             bert_outputs = []
             for token_ids, valid_length, segment_ids in sample:
-                token_ids = torch.reshape(torch.Tensor(token_ids), (1, -1)).long().to(device)
-                segment_ids = torch.reshape(torch.Tensor(segment_ids), (1, -1)).long().to(device)
+                token_ids = torch.reshape(torch.Tensor(token_ids), (1, -1)).long().to('cpu')
+                segment_ids = torch.reshape(torch.Tensor(segment_ids), (1, -1)).long().to('cpu')
                 valid_length = valid_length.reshape(1,)
 
                 # Get BERT output (batch_size, 768)
@@ -26,6 +26,7 @@ class BERTOutputSequence(object):
 
         self.articles = articles
         self.labels = labels
+        self.device = device
         self.size = len(dataset)
         self.batch_size = batch_size
         self._n_batches = self.size // self.batch_size + int(self.size % self.batch_size > 0)
@@ -36,8 +37,8 @@ class BERTOutputSequence(object):
     def __iter__(self):
         for i in range(self._n_batches):
             # TODO: pad to max sequence length.
-            articles = torch.nn.utils.rnn.pad_sequence(self.articles[i:i+self.batch_size])
-            labels = torch.Tensor(self.labels[i:i+self.batch_size])
+            articles = torch.nn.utils.rnn.pad_sequence(self.articles[i:i+self.batch_size]).to(self.device)
+            labels = torch.Tensor(self.labels[i:i+self.batch_size]).to(self.device)
 
             yield articles, labels
 
