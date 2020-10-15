@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import argparse
 import logging
+from datetime import datetime
 
 import torch
 from torch import nn
@@ -34,7 +35,8 @@ parser.add_argument('--test_run', help="test run the code on small sample (2 lin
 args = parser.parse_args()
 
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.DEBUG, filename=PROJECT_DIR / 'logs' / f'train_{datetime.now()}.log', filemode='w',
+                    format='[%(asctime)s][%(name)s][%(levelname)s] %(message)s')
 logger = logging.getLogger('train.py')
 logger.setLevel(logging.DEBUG)
 
