@@ -1,5 +1,5 @@
 from setuptools import setup
-from kobert import __version__
+from src.kobert import __version__
 
 
 setup(name='kobert',
