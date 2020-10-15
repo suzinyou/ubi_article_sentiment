@@ -14,6 +14,7 @@ from transformers import get_linear_schedule_with_warmup
 
 from tqdm import tqdm
 
+from article_sentiment.env import PROJECT_DIR
 from article_sentiment.kobert.utils import get_tokenizer
 from article_sentiment.kobert.pytorch_kobert import get_pytorch_kobert_model, get_kobert_model
 from article_sentiment.data.utils import SegmentedArticlesDataset, BERTDataset
@@ -24,11 +25,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--device', help="`cpu` vs `gpu`", choices=['cpu', 'gpu'], default='gpu')
 parser.add_argument('--fine_tune', help="fine-tune BERT and save output", action='store_true')
 parser.add_argument('--fine_tune_save', help="save path for fine-tuned BERT classifier",
-                    default='../models/bert_fine_tuned.dict', type=str)
+                    default=PROJECT_DIR / 'models' / 'bert_fine_tuned.dict', type=str)
 parser.add_argument('--fine_tune_load', help="load path for fine-tuned BERT classifier", default='', type=str)
 parser.add_argument('--robert', help="train RoBERT", action='store_true')
 parser.add_argument('--tobert', help="train ToBERT", action='store_true')
-parser.add_argument('--clf_save', help='path to which classifier is saved', default='../models/classifier.dict')
+parser.add_argument('--clf_save', help='path to which classifier is saved', default=PROJECT_DIR / 'models' / 'classifier.dict')
 parser.add_argument('--test_run', help="test run the code on small sample (2 lines of train and test each)", action='store_true')
 args = parser.parse_args()
 
@@ -145,7 +146,7 @@ if __name__ == '__main__':
     logger.info("Successfully loaded KoBERT.")
 
     # Load data
-    data_path = '../data/processed/201003_labelled_{}.csv'
+    data_path = str(PROJECT_DIR / 'data' /'processed' / '201003_labelled_{}.csv')
     logger.info(f"Loading data at {data_path}")
 
     if args.test_run:

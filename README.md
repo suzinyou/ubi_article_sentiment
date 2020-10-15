@@ -97,7 +97,7 @@ pip install .
 
 ```python
 >>> import torch
->>> from src.kobert import get_pytorch_kobert_model
+>>> from article_sentiment.kobert import get_pytorch_kobert_model
 >>> input_ids = torch.LongTensor([[31, 51, 99], [15, 5, 0]])
 >>> input_mask = torch.LongTensor([[1, 1, 1], [1, 1, 0]])
 >>> token_type_ids = torch.LongTensor([[0, 0, 1], [0, 1, 0]])
@@ -127,7 +127,7 @@ tensor([[-0.2461,  0.2428,  0.2590,  ..., -0.4861, -0.0731,  0.0756],
 ```python
 >>> import onnxruntime
 >>> import numpy as np
->>> from src.kobert import get_onnx
+>>> from article_sentiment.kobert import get_onnx
 >>> onnx_path = get_onnx()
 >>> sess = onnxruntime.InferenceSession(onnx_path)
 >>> input_ids = [[31, 51, 99], [15, 5, 0]]
@@ -154,7 +154,7 @@ _ONNX 컨버팅은 [soeque1](https://github.com/soeque1)께서 도움을 주셨�
 
 ```python
 >>> import mxnet as mx
->>> from src.kobert import get_mxnet_kobert_model
+>>> from article_sentiment.kobert import get_mxnet_kobert_model
 >>> input_id = mx.nd.array([[31, 51, 99], [15, 5, 0]])
 >>> input_mask = mx.nd.array([[1, 1, 1], [1, 1, 0]])
 >>> token_type_ids = mx.nd.array([[0, 0, 1], [0, 1, 0]])
@@ -184,7 +184,7 @@ Vocab(size=8002, unk="[UNK]", reserved="['[MASK]', '[SEP]', '[CLS]']")
 
 ```python
 >>> from gluonnlp.data import SentencepieceTokenizer
->>> from src.kobert import get_tokenizer
+>>> from article_sentiment.kobert import get_tokenizer
 >>> tok_path = get_tokenizer()
 >>> sp  = SentencepieceTokenizer(tok_path)
 >>> sp('한국어 모델을 공유합니다.')
