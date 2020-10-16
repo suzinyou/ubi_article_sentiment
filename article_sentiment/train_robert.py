@@ -30,7 +30,7 @@ parser.add_argument('--test_run', help="test run the code on small sample (2 lin
 args = parser.parse_args()
 
 
-logging.basicConfig(level=logging.DEBUG, filename=PROJECT_DIR / 'logs' / f'train_{datetime.now()}.log', filemode='w',
+logging.basicConfig(level=logging.DEBUG, #filename=PROJECT_DIR / 'logs' / f'train_{datetime.now()}.log', filemode='w',
                     format='[%(asctime)s][%(name)s][%(levelname)s] %(message)s')
 logger = logging.getLogger('train_robert.py')
 logger.setLevel(logging.DEBUG)
@@ -50,8 +50,7 @@ if __name__ == '__main__':
             f"Check the path in --fine_tune_save option. Directory does not exist: {save_dir}")
 
     logger.info(f"Args: device={args.device}, test_run={args.test_run}, "
-                f"fine_tune_load={args.fine_tune_load}, "
-                f"robert={args.robert}, clf_save={args.clf_save}")
+                f"fine_tune_load={args.fine_tune_load}, clf_save={args.clf_save}")
 
     num_workers = os.cpu_count()
     input_size = 768
