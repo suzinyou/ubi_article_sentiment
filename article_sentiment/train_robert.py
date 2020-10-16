@@ -65,7 +65,7 @@ if __name__ == '__main__':
         logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
 
     # Load data
-    data_path = str(PROJECT_DIR / 'data' /'processed' / '201003_labelled_{}.csv')
+    data_path = str(PROJECT_DIR / 'data' /'processed' / 'labelled_{}.csv')
     logger.info(f"Loading data at {data_path}")
 
     if args.test_run:
@@ -74,8 +74,8 @@ if __name__ == '__main__':
     else:
         n_train_discard = n_test_discard = 1
 
-    dataset_train = nlp.data.TSVDataset(data_path.format('train'), field_indices=[2, 3], num_discard_samples=n_train_discard)
-    dataset_test = nlp.data.TSVDataset(data_path.format('test'), field_indices=[2, 3], num_discard_samples=n_test_discard)
+    dataset_train = nlp.data.TSVDataset(data_path.format('train'), field_indices=[0, 1], num_discard_samples=n_train_discard)
+    dataset_test = nlp.data.TSVDataset(data_path.format('test'), field_indices=[0, 1], num_discard_samples=n_test_discard)
 
     # Tokenizer
     tokenizer = get_tokenizer()
