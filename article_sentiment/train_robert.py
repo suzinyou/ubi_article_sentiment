@@ -82,8 +82,8 @@ if __name__ == '__main__':
         data_path.format('train'), field_indices=[0, 1], num_discard_samples=n_train_discard)
     dataset_val = nlp.data.TSVDataset(
         data_path.format('val'), field_indices=[0, 1], num_discard_samples=n_val_discard)
-    # dataset_test = nlp.data.TSVDataset(
-    #     data_path.format('test'), field_indices=[0, 1], num_discard_samples=n_test_discard)
+    dataset_test = nlp.data.TSVDataset(
+        data_path.format('test'), field_indices=[0, 1], num_discard_samples=n_test_discard)
 
     # Tokenizer
     tokenizer = get_tokenizer()
@@ -91,7 +91,7 @@ if __name__ == '__main__':
 
     robert_data_train = SegmentedArticlesDataset(dataset_train, tok, segment_len, overlap, True, False)
     robert_data_val = SegmentedArticlesDataset(dataset_val, tok, segment_len, overlap, True, False)
-    # robert_data_test = SegmentedArticlesDataset(dataset_test, tok, segment_len, overlap, True, False)
+    robert_data_test = SegmentedArticlesDataset(dataset_test, tok, segment_len, overlap, True, False)
     logger.info("Successfully loaded data. Articles are segmented and tokenized.")
 
     if args.device == 'cuda':
@@ -150,13 +150,13 @@ if __name__ == '__main__':
         robert_data_train, batch_size=batch_size, bert_clf=clf_model, device=device)
     val_sequences = BERTOutputSequence(
         robert_data_val, batch_size=batch_size, bert_clf=clf_model, device=device)
-    # test_sequences = BERTOutputSequence(
-    #     robert_data_test, batch_size=batch_size, bert_clf=clf_model, device=device)
+    test_sequences = BERTOutputSequence(
+        robert_data_test, batch_size=batch_size, bert_clf=clf_model, device=device)
 
     # TODO: use collate_fn argument in DataLoader to utilize multiprocessing etc?
     robert_train_dataloader = train_sequences
     robert_val_dataloader = val_sequences
-    # robert_test_dataloader = test_sequences
+    robert_test_dataloader = test_sequences
     logger.info("Successfully loaded RoBERT data")
     if args.device == 'cuda':
         logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")

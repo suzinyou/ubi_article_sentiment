@@ -31,6 +31,7 @@ parser.add_argument('--test_run', help="test run the code on small sample (2 lin
 # parser.add_argument('--save_log', help="wehther to save log or not", action="store_true")
 parser.add_argument('-v', '--verbose', help="verbosity of log", action="store_true")
 parser.add_argument('--seed', help="random seed for pytorch", default=0, type=int)
+parser.add_argument('--warm_start', help='load saved fine-tuned clf and optimizer', action='store_true')
 args = parser.parse_args()
 
 logging.basicConfig(
@@ -138,8 +139,14 @@ if __name__ == '__main__':
     logger.info("Created data for KoBERT fine-tuning.")
 
     # 1.2 Set up classifier model.
-    clf_model = BERTClassifier(bertmodel, dr_rate=0.5).to(device)
-    logger.info("KoBERT Classifier is instantiated.")
+    if args.warm_start:
+        logger.info("Warm start: loading KoBERT classifier...")
+        bertmodel = get_kobert_model(args.fine_tune_save)
+        clf_model = BERTClassifier(bertmodel, dr_rate=0.5).to(device)
+        logger.info("Loaded KoBERT Classifier.")
+    else:
+        clf_model = BERTClassifier(bertmodel, dr_rate=0.5).to(device)
+        logger.info("KoBERT Classifier is instantiated.")
 
     # 1.3 Set up training parameters
     #       Prepare optimizer and schedule (linear warmup and decay)
@@ -151,6 +158,10 @@ if __name__ == '__main__':
     ]
 
     optimizer = AdamW(optimizer_grouped_parameters, lr=learning_rate)
+    if args.warm_start:
+        state_dict = torch.load(str(args.fine_tune_save).split('.')[0] + '_optimizer.dict')
+        optimizer.load_state_dict(state_dict)
+
     loss_fn = nn.CrossEntropyLoss()
 
     t_total = len(train_dataloader) * num_epochs_fine_tune
@@ -185,6 +196,15 @@ if __name__ == '__main__':
                 torch.save(optimizer.state_dict(), str(args.fine_tune_save).split('.')[0] + '_optimizer.dict')
 
         logger.info("epoch {} train acc {}".format(e + 1, train_acc / (batch_id + 1)))
+
+        if args.device == 'cuda':
+            logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
+
+        del label, out, token_ids, segment_ids
+
+        if args.device == 'cuda':
+            torch.cuda.empty_cache()
+            logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
 
         clf_model.eval()
         val_loss = 0.0
