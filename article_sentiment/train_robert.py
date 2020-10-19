@@ -4,8 +4,8 @@ import os
 from pathlib import Path
 import argparse
 import logging
-from datetime import datetime
 
+import numpy as np
 import torch
 from torch import nn
 import gluonnlp as nlp
@@ -24,9 +24,10 @@ from article_sentiment.model import BERTClassifier, RoBERT
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--device', help="`cpu` vs `gpu`", choices=['cpu', 'cuda'], default='cuda')
-parser.add_argument('--fine_tune_load', help="load path for fine-tuned BERT classifier", default='', type=str)
+parser.add_argument('--fine_tune_load', help="load path for fine-tuned BERT classifier", default=PROJECT_DIR / 'models' / 'bert_fine_tuned.dict', type=str)
 parser.add_argument('--clf_save', help='path to which classifier is saved', default=PROJECT_DIR / 'models' / 'classifier.dict')
 parser.add_argument('--test_run', help="test run the code on small sample (2 lines of train and test each)", action='store_true')
+parser.add_argument('--seed', help="random seed for pytorch", default=0, type=int)
 args = parser.parse_args()
 
 
@@ -35,6 +36,8 @@ logging.basicConfig(level=logging.DEBUG, #filename=PROJECT_DIR / 'logs' / f'trai
 logger = logging.getLogger('train_robert.py')
 logger.setLevel(logging.DEBUG)
 
+torch.manual_seed(args.seed)
+np.random.seed(args.seed)
 
 if __name__ == '__main__':
     # Check arg validity
@@ -69,21 +72,28 @@ if __name__ == '__main__':
     logger.info(f"Loading data at {data_path}")
 
     if args.test_run:
-        n_train_discard = 132
-        n_test_discard = 58
+        n_train_discard = 119
+        n_val_discard = 39
+        n_test_discard = 39
     else:
-        n_train_discard = n_test_discard = 1
+        n_train_discard = n_val_discard = n_test_discard = 1
 
-    dataset_train = nlp.data.TSVDataset(data_path.format('train'), field_indices=[0, 1], num_discard_samples=n_train_discard)
-    dataset_test = nlp.data.TSVDataset(data_path.format('test'), field_indices=[0, 1], num_discard_samples=n_test_discard)
+    dataset_train = nlp.data.TSVDataset(
+        data_path.format('train'), field_indices=[0, 1], num_discard_samples=n_train_discard)
+    dataset_val = nlp.data.TSVDataset(
+        data_path.format('val'), field_indices=[0, 1], num_discard_samples=n_val_discard)
+    # dataset_test = nlp.data.TSVDataset(
+    #     data_path.format('test'), field_indices=[0, 1], num_discard_samples=n_test_discard)
 
     # Tokenizer
     tokenizer = get_tokenizer()
     tok = nlp.data.BERTSPTokenizer(tokenizer, vocab, lower=False)
 
     robert_data_train = SegmentedArticlesDataset(dataset_train, tok, segment_len, overlap, True, False)
-    robert_data_test = SegmentedArticlesDataset(dataset_test, tok, segment_len, overlap, True, False)
+    robert_data_val = SegmentedArticlesDataset(dataset_val, tok, segment_len, overlap, True, False)
+    # robert_data_test = SegmentedArticlesDataset(dataset_test, tok, segment_len, overlap, True, False)
     logger.info("Successfully loaded data. Articles are segmented and tokenized.")
+
     if args.device == 'cuda':
         logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
 
@@ -97,13 +107,13 @@ if __name__ == '__main__':
     max_num_tokens = 9000
     segment_len = 200
     overlap = 50
-    batch_size = 16
+    batch_size = 10
     warmup_ratio = 0.1
     num_epochs_fine_tune = 1
     num_epochs_lstm = 1
     max_grad_norm = 1
     log_interval = 200
-    learning_rate = 1e-3
+    learning_rate = 1e-4
     lstm_hidden_size = 100
     fc_hidden_size = 30
 
@@ -138,12 +148,15 @@ if __name__ == '__main__':
 
     train_sequences = BERTOutputSequence(
         robert_data_train, batch_size=batch_size, bert_clf=clf_model, device=device)
-    test_sequences = BERTOutputSequence(
-        robert_data_test, batch_size=batch_size, bert_clf=clf_model, device=device)
+    val_sequences = BERTOutputSequence(
+        robert_data_val, batch_size=batch_size, bert_clf=clf_model, device=device)
+    # test_sequences = BERTOutputSequence(
+    #     robert_data_test, batch_size=batch_size, bert_clf=clf_model, device=device)
 
     # TODO: use collate_fn argument in DataLoader to utilize multiprocessing etc?
     robert_train_dataloader = train_sequences
-    robert_test_dataloader = test_sequences
+    robert_val_dataloader = val_sequences
+    # robert_test_dataloader = test_sequences
     logger.info("Successfully loaded RoBERT data")
     if args.device == 'cuda':
         logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
@@ -187,7 +200,7 @@ if __name__ == '__main__':
     logger.info("Begin training")
     for e in range(num_epochs_lstm):
         train_acc = 0.0
-        test_acc = 0.0
+        val_acc = 0.0
         robert_model.train()
         for batch_id, (articles_seq, label) in enumerate(
                 tqdm(robert_train_dataloader)):
@@ -199,9 +212,8 @@ if __name__ == '__main__':
             loss.backward()
             torch.nn.utils.clip_grad_norm_(robert_model.parameters(), max_grad_norm)
             optimizer.step()
-            scheduler.step(loss)  # on validation loss?
 
-            test_acc += calc_accuracy(lstm_out, label)
+            train_acc += calc_accuracy(lstm_out, label)
             if batch_id % log_interval == 0:
                 logger.info("epoch {} batch id {} loss {} train acc {}".format(e + 1, batch_id + 1, loss.data.cpu().numpy(),
                                                                          train_acc / (batch_id + 1)))
@@ -211,12 +223,15 @@ if __name__ == '__main__':
 
         logger.info("epoch {} train acc {}".format(e + 1, train_acc / (batch_id + 1)))
         robert_model.eval()
+        val_loss = 0.0
         for batch_id, (articles_seq, label) in enumerate(
-                tqdm(robert_test_dataloader)):
+                tqdm(robert_val_dataloader)):
             label = label.long().to(device)
             lstm_out = robert_model(articles_seq)
-            test_acc += calc_accuracy(lstm_out, label)
-        logger.info("epoch {} test acc {}".format(e + 1, test_acc / (batch_id + 1)))
+            val_loss += loss_fn(lstm_out, label)
+            val_acc += calc_accuracy(lstm_out, label)
+        logger.info("epoch {} val acc {}, loss {}".format(e + 1, val_acc / (batch_id + 1), val_loss / (batch_id + 1)))
+        scheduler.step(val_loss)  # on validation loss?
 
     # 2.6 Save
     torch.save(robert_model.state_dict(), args.clf_save)

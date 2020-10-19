@@ -1,10 +1,9 @@
+import numpy as np
 import torch
 
 
-
-
 class BERTOutputSequence(object):
-    def __init__(self, dataset, bert_clf, device, batch_size=64):
+    def __init__(self, dataset, bert_clf, device, batch_size=64, random_seed=None):
         articles = []
         labels = []
         for sample, label in dataset:
@@ -24,23 +23,31 @@ class BERTOutputSequence(object):
             articles.append(bert_output_seq)
             labels.append(label)
 
-        self.articles = articles
-        self.labels = labels
+        self.articles = np.arange(articles)
+        self.labels = np.arange(labels)
         self.device = device
         self.size = len(dataset)
         self.batch_size = batch_size
         self._n_batches = self.size // self.batch_size + int(self.size % self.batch_size > 0)
+        self.random_seed = 0 if random_seed is None else random_seed
 
     def __getitem__(self, item):
         return (self.articles[item], self.labels[item])
 
     def __iter__(self):
+        np.random.seed(self.random_seed)
+        shuffle_idx = np.arange(self.size)
+        np.shuffle(shuffle_idx)
+
+        _articles = self.articles[shuffle_idx]
+        _labels = self.labels[shuffle_idx]
+
         for i in range(self._n_batches):
             # TODO: pad to max sequence length.
-            articles = torch.nn.utils.rnn.pad_sequence(self.articles[i:i+self.batch_size]).to(self.device)
-            labels = torch.Tensor(self.labels[i:i+self.batch_size]).to(self.device)
+            articles = torch.nn.utils.rnn.pad_sequence(_articles[i:i+self.batch_size]).to(self.device)
+            labels = torch.Tensor(_labels[i:i+self.batch_size]).to(self.device)
 
             yield articles, labels
 
     def __len__(self):
-        return len(self.articles)
+        return self._n_batches
