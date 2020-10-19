@@ -65,6 +65,9 @@ if __name__ == '__main__':
         raise ValueError(
             f"Check the path in --fine_tune_save option. Directory does not exist: {save_dir}")
 
+    if args.warm_start:
+        assert os.path.exists(args.fine_tune_save), f"no state dict saved to warm-start at {args.fine_tune_save}"
+
     logger.info(f"Args: device={args.device}, test_run={args.test_run}, "
                 f"fine_tune_save={args.fine_tune_save},")
 
@@ -139,14 +142,12 @@ if __name__ == '__main__':
     logger.info("Created data for KoBERT fine-tuning.")
 
     # 1.2 Set up classifier model.
+    clf_model = BERTClassifier(bertmodel, dr_rate=0.5).to(device)
+    logger.info("KoBERT Classifier is instantiated.")
     if args.warm_start:
-        logger.info("Warm start: loading KoBERT classifier...")
-        bertmodel = get_kobert_model(args.fine_tune_save)
-        clf_model = BERTClassifier(bertmodel, dr_rate=0.5).to(device)
-        logger.info("Loaded KoBERT Classifier.")
-    else:
-        clf_model = BERTClassifier(bertmodel, dr_rate=0.5).to(device)
-        logger.info("KoBERT Classifier is instantiated.")
+        logger.info("Warm start: loading saved state dict...")
+        state_dict = torch.load(args.fine_tune_save)
+        clf_model.load_state_dict(state_dict)
 
     # 1.3 Set up training parameters
     #       Prepare optimizer and schedule (linear warmup and decay)
