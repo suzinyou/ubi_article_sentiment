@@ -176,9 +176,9 @@ if __name__ == '__main__':
     # 1.4 TRAIN!!!
     logger.info("Begin training")
     for e in range(num_epochs_fine_tune):
+        # 1.4.1 TRAIN
         if not args.validate:
             train_acc = 0.0
-            val_acc = 0.0
             clf_model.train()
             for batch_id, (token_ids, valid_length, segment_ids, label) in enumerate(tqdm(train_dataloader)):
                 optimizer.zero_grad()
@@ -211,7 +211,9 @@ if __name__ == '__main__':
                 torch.cuda.empty_cache()
                 logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
 
+        # 1.4.2. Validate
         clf_model.eval()
+        val_acc = 0.0
         val_loss = 0.0
         for batch_id, (token_ids, valid_length, segment_ids, label) in enumerate(tqdm(val_dataloader)):
             token_ids = token_ids.long().to(device)
