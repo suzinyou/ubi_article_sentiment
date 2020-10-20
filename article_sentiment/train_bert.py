@@ -152,6 +152,8 @@ if __name__ == '__main__':
 
     # 1.3 Set up training parameters
     #       Prepare optimizer and schedule (linear warmup and decay)
+    loss_fn = nn.CrossEntropyLoss()
+
     if not args.validate:
         no_decay = ['bias', 'LayerNorm.weight']
         optimizer_grouped_parameters = [
@@ -166,8 +168,6 @@ if __name__ == '__main__':
             optimizer.load_state_dict(state_dict)
         logger.debug("Loaded optimizer")
         logger.debug(torch.cuda.memory_summary())
-
-        loss_fn = nn.CrossEntropyLoss()
 
         t_total = len(train_dataloader) * num_epochs_fine_tune
         warmup_step = int(t_total * warmup_ratio)
