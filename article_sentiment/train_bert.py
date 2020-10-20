@@ -76,11 +76,11 @@ if __name__ == '__main__':
     input_size = 768
     segment_len = 200
     overlap = 50
-    batch_size = 10
+    batch_size = 64 
     warmup_ratio = 0.1
-    num_epochs_fine_tune = 3
+    num_epochs_fine_tune = 3 
     max_grad_norm = 1
-    log_interval = 1
+    log_interval = 3 
     learning_rate = 5e-5
 
     # Load model
@@ -149,6 +149,10 @@ if __name__ == '__main__':
         logger.info("Warm start: loading saved state dict...")
         state_dict = torch.load(args.fine_tune_save)
         clf_model.load_state_dict(state_dict)
+        logger.debug("Loaded saved state dict to BERTClassifier.")
+
+        if args.device == 'cuda':
+            logger.debug(torch.cuda.memory_summary())
 
     # 1.3 Set up training parameters
     #       Prepare optimizer and schedule (linear warmup and decay)
@@ -167,7 +171,8 @@ if __name__ == '__main__':
             state_dict = torch.load(str(args.fine_tune_save).split('.')[0] + '_optimizer.dict')
             optimizer.load_state_dict(state_dict)
         logger.debug("Loaded optimizer")
-        logger.debug(torch.cuda.memory_summary())
+        if args.device == 'cuda':
+            logger.debug(torch.cuda.memory_summary())
 
         t_total = len(train_dataloader) * num_epochs_fine_tune
         warmup_step = int(t_total * warmup_ratio)
@@ -212,29 +217,32 @@ if __name__ == '__main__':
             if args.device == 'cuda':
                 logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
 
-            del label, out, token_ids, segment_ids, valid_length
-
-            if args.device == 'cuda':
-                torch.cuda.empty_cache()
-                logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
 
         # 1.4.2. Validate
         if args.mode in ('validate', 'all'):
             clf_model.eval()
             val_acc = 0.0
             val_loss = 0.0
-            for batch_id, (token_ids, valid_length, segment_ids, label) in enumerate(tqdm(val_dataloader)):
-                token_ids = token_ids.long().to(device)
-                segment_ids = segment_ids.long().to(device)
-                valid_length = valid_length
-                label = label.long().to(device)
-                out = clf_model(token_ids, valid_length, segment_ids)
-                val_loss += loss_fn(out, label).float()
-                val_acc += calc_accuracy(out, label)
+            with torch.no_grad():
+                for batch_id, (token_ids, valid_length, segment_ids, label) in enumerate(tqdm(val_dataloader)):
+                    token_ids = token_ids.long().to(device)
+                    segment_ids = segment_ids.long().to(device)
+                    valid_length = valid_length
+                    label = label.long().to(device)
+                    out = clf_model(token_ids, valid_length, segment_ids)
+                    val_loss += loss_fn(out, label).float()
+                    val_acc += calc_accuracy(out, label)
+
+                    del label, out, token_ids, segment_ids, valid_length
+
+            if args.device == 'cuda':
+                torch.cuda.empty_cache()
+                logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
 
             logger.info("epoch {} val acc {}, loss {}".format(e + 1, val_acc / (batch_id + 1), val_loss / (batch_id + 1)))
 
-            break
+            if args.mode == 'validate':
+                break
 
     logger.info("Saving BERTClassifier state dict...")
     torch.save(clf_model.state_dict(), args.fine_tune_save)
@@ -242,16 +250,17 @@ if __name__ == '__main__':
     clf_model.eval()
     test_loss = 0.0
     test_acc = 0.0
-    for batch_id, (token_ids, valid_length, segment_ids, label) in enumerate(tqdm(test_dataloader)):
-        token_ids = token_ids.long().to(device)
-        segment_ids = segment_ids.long().to(device)
-        valid_length = valid_length
-        label = label.long().to(device)
-        out = clf_model(token_ids, valid_length, segment_ids)
-        test_loss += loss_fn(out, label)
-        test_acc += calc_accuracy(out, label)
+    with torch.no_grad():
+        for batch_id, (token_ids, valid_length, segment_ids, label) in enumerate(tqdm(test_dataloader)):
+            token_ids = token_ids.long().to(device)
+            segment_ids = segment_ids.long().to(device)
+            valid_length = valid_length
+            label = label.long().to(device)
+            out = clf_model(token_ids, valid_length, segment_ids)
+            test_loss += loss_fn(out, label)
+            test_acc += calc_accuracy(out, label)
 
-    logger.info("test acc {}, loss {}".format(test_acc / (batch_id + 1), test_loss / (batch_id + 1)))
+        logger.info("test acc {}, loss {}".format(test_acc / (batch_id + 1), test_loss / (batch_id + 1)))
 
     if args.device == 'cuda':
         logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
