@@ -147,31 +147,32 @@ if __name__ == '__main__':
     logger.info("KoBERT Classifier is instantiated.")
     if args.warm_start:
         logger.info("Warm start: loading saved state dict...")
-        state_dict = torch.load(args.fine_tune_save)
+        state_dict = torch.load(args.fine_tune_save)()
         clf_model.load_state_dict(state_dict)
 
     # 1.3 Set up training parameters
     #       Prepare optimizer and schedule (linear warmup and decay)
-    no_decay = ['bias', 'LayerNorm.weight']
-    optimizer_grouped_parameters = [
-        {'params': [p for n, p in clf_model.named_parameters() if not any(nd in n for nd in no_decay)],
-         'weight_decay': 0.01},
-        {'params': [p for n, p in clf_model.named_parameters() if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
-    ]
+    if not args.validate:
+        no_decay = ['bias', 'LayerNorm.weight']
+        optimizer_grouped_parameters = [
+            {'params': [p for n, p in clf_model.named_parameters() if not any(nd in n for nd in no_decay)],
+             'weight_decay': 0.01},
+            {'params': [p for n, p in clf_model.named_parameters() if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
+        ]
 
-    optimizer = AdamW(optimizer_grouped_parameters, lr=learning_rate)
-    if args.warm_start:
-        state_dict = torch.load(str(args.fine_tune_save).split('.')[0] + '_optimizer.dict')
-        optimizer.load_state_dict(state_dict)
-    logger.debug("Loaded optimizer")
-    logger.debug(torch.cuda.memory_summary())
+        optimizer = AdamW(optimizer_grouped_parameters, lr=learning_rate)
+        if args.warm_start:
+            state_dict = torch.load(str(args.fine_tune_save).split('.')[0] + '_optimizer.dict')
+            optimizer.load_state_dict(state_dict)
+        logger.debug("Loaded optimizer")
+        logger.debug(torch.cuda.memory_summary())
 
-    loss_fn = nn.CrossEntropyLoss()
+        loss_fn = nn.CrossEntropyLoss()
 
-    t_total = len(train_dataloader) * num_epochs_fine_tune
-    warmup_step = int(t_total * warmup_ratio)
+        t_total = len(train_dataloader) * num_epochs_fine_tune
+        warmup_step = int(t_total * warmup_ratio)
 
-    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_step, num_training_steps=t_total)
+        scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_step, num_training_steps=t_total)
 
     # 1.4 TRAIN!!!
     logger.info("Begin training")
