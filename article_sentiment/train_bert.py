@@ -147,7 +147,7 @@ if __name__ == '__main__':
     logger.info("KoBERT Classifier is instantiated.")
     if args.warm_start:
         logger.info("Warm start: loading saved state dict...")
-        state_dict = torch.load(args.fine_tune_save)()
+        state_dict = torch.load(args.fine_tune_save)
         clf_model.load_state_dict(state_dict)
 
     # 1.3 Set up training parameters
