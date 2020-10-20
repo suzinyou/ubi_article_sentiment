@@ -140,9 +140,11 @@ if __name__ == '__main__':
 
     # 2.4 Load BERT model
     logger.info("Loading KoBERT...")
-    bertmodel = get_kobert_model(args.fine_tune_load)
     clf_model = BERTClassifier(bertmodel, dr_rate=0.5).to(device)
+    state_dict = torch.load(args.fine_tune_load)
+    clf_model.load_state_dict(state_dict)
     logger.info("Successfully loaded KoBERT")
+    
     if args.device == 'cuda':
         logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
 

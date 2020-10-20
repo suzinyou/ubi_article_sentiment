@@ -32,6 +32,7 @@ parser.add_argument('--test_run', help="test run the code on small sample (2 lin
 parser.add_argument('-v', '--verbose', help="verbosity of log", action="store_true")
 parser.add_argument('--seed', help="random seed for pytorch", default=0, type=int)
 parser.add_argument('--warm_start', help='load saved fine-tuned clf and optimizer', action='store_true')
+parser.add_argument('--validate', help="don't train, just validate", action='store_true')
 args = parser.parse_args()
 
 logging.basicConfig(
@@ -162,6 +163,8 @@ if __name__ == '__main__':
     if args.warm_start:
         state_dict = torch.load(str(args.fine_tune_save).split('.')[0] + '_optimizer.dict')
         optimizer.load_state_dict(state_dict)
+    logger.debug("Loaded optimizer")
+    logger.debug(torch.cuda.memory_summary())
 
     loss_fn = nn.CrossEntropyLoss()
 
@@ -173,39 +176,40 @@ if __name__ == '__main__':
     # 1.4 TRAIN!!!
     logger.info("Begin training")
     for e in range(num_epochs_fine_tune):
-        train_acc = 0.0
-        val_acc = 0.0
-        clf_model.train()
-        for batch_id, (token_ids, valid_length, segment_ids, label) in enumerate(tqdm(train_dataloader)):
-            optimizer.zero_grad()
-            token_ids = token_ids.long().to(device)
-            segment_ids = segment_ids.long().to(device)
-            valid_length = valid_length  # ㅁㅝ지?
-            label = label.long().to(device)
-            out = clf_model(token_ids, valid_length, segment_ids)
-            loss = loss_fn(out, label)
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(clf_model.parameters(), max_grad_norm)
-            optimizer.step()
-            scheduler.step()  # Update learning rate schedule
-            train_acc += calc_accuracy(out, label)
-            if batch_id % log_interval == 0:
-                logger.info("epoch {} batch id {} loss {} train acc {}".format(
-                    e + 1, batch_id + 1, loss.data.cpu().numpy(), train_acc / (batch_id + 1)))
-            if batch_id % log_interval * 10 == 0:
-                torch.save(clf_model.state_dict(), args.fine_tune_save)
-                torch.save(optimizer.state_dict(), str(args.fine_tune_save).split('.')[0] + '_optimizer.dict')
+        if not args.validate:
+            train_acc = 0.0
+            val_acc = 0.0
+            clf_model.train()
+            for batch_id, (token_ids, valid_length, segment_ids, label) in enumerate(tqdm(train_dataloader)):
+                optimizer.zero_grad()
+                token_ids = token_ids.long().to(device)
+                segment_ids = segment_ids.long().to(device)
+                valid_length = valid_length  # ㅁㅝ지?
+                label = label.long().to(device)
+                out = clf_model(token_ids, valid_length, segment_ids)
+                loss = loss_fn(out, label)
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(clf_model.parameters(), max_grad_norm)
+                optimizer.step()
+                scheduler.step()  # Update learning rate schedule
+                train_acc += calc_accuracy(out, label)
+                if batch_id % log_interval == 0:
+                    logger.info("epoch {} batch id {} loss {} train acc {}".format(
+                        e + 1, batch_id + 1, loss.data.cpu().numpy(), train_acc / (batch_id + 1)))
+                if batch_id % log_interval * 10 == 0:
+                    torch.save(clf_model.state_dict(), args.fine_tune_save)
+                    torch.save(optimizer.state_dict(), str(args.fine_tune_save).split('.')[0] + '_optimizer.dict')
 
-        logger.info("epoch {} train acc {}".format(e + 1, train_acc / (batch_id + 1)))
+            logger.info("epoch {} train acc {}".format(e + 1, train_acc / (batch_id + 1)))
 
-        if args.device == 'cuda':
-            logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
+            if args.device == 'cuda':
+                logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
 
-        del label, out, token_ids, segment_ids
+            del label, out, token_ids, segment_ids
 
-        if args.device == 'cuda':
-            torch.cuda.empty_cache()
-            logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
+            if args.device == 'cuda':
+                torch.cuda.empty_cache()
+                logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
 
         clf_model.eval()
         val_loss = 0.0
@@ -219,6 +223,9 @@ if __name__ == '__main__':
             val_acc += calc_accuracy(out, label)
 
         logger.info("epoch {} val acc {}, loss {}".format(e + 1, val_acc / (batch_id + 1), val_loss / (batch_id + 1)))
+
+        if args.validate:
+            break
 
     torch.save(clf_model.state_dict(), args.fine_tune_save)
     clf_model.eval()
