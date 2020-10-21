@@ -1,45 +1,45 @@
 #!/usr/bin/env python
 # coding: utf-8
-import os
-import sys
-from pathlib import Path
 import argparse
 import logging
+import os
+from pathlib import Path
 
+import gluonnlp as nlp
 import numpy as np
 import torch
+import wandb
+from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
 from torch import nn
 from torch.utils.data import Dataset
-import gluonnlp as nlp
+from tqdm import tqdm
 from transformers import AdamW
 from transformers import get_linear_schedule_with_warmup
-from tqdm import tqdm
-import wandb
-from sklearn.metrics import confusion_matrix
 
-from article_sentiment.env import PROJECT_DIR
-from article_sentiment.kobert.utils import get_tokenizer
-from article_sentiment.kobert.pytorch_kobert import get_pytorch_kobert_model, get_kobert_model
 from article_sentiment.data.utils import SegmentedArticlesDataset, BERTDataset
+from article_sentiment.env import PROJECT_DIR
+from article_sentiment.kobert.pytorch_kobert import get_pytorch_kobert_model
+from article_sentiment.kobert.utils import get_tokenizer
 from article_sentiment.model import BERTClassifier
-from article_sentiment.utils import calc_accuracy, num_correct
+from article_sentiment.utils import num_correct
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--device', help="`cpu` vs `gpu`", choices=['cpu', 'cuda'], default='cuda')
 parser.add_argument('--fine_tune_save', help="save path for fine-tuned BERT classifier",
                     default=PROJECT_DIR / 'models' / 'bert_fine_tuned.dict', type=str)
-parser.add_argument('--test_run', help="test run the code on small sample (2 lines of train and test each)", action='store_true')
-# parser.add_argument('--save_log', help="wehther to save log or not", action="store_true")
-parser.add_argument('-v', '--verbose', help="verbosity of log", action="store_true")
+parser.add_argument('--test_run', help="test run the code on small sample (2 lines of train and test each)",
+                    action='store_true')
 parser.add_argument('--seed', help="random seed for pytorch", default=0, type=int)
 parser.add_argument('--warm_start', help='load saved fine-tuned clf and optimizer', action='store_true')
-parser.add_argument('-m', '--mode', help="train mode? val mode? all(both)?", choices=['train', 'validate', 'all'], default='all')
+parser.add_argument('-m', '--mode', help="train mode? val mode? all(both)?", choices=['train', 'validate', 'all'],
+                    default='all')
 parser.add_argument('-b', '--batch_size', default=16, type=int)
+parser.add_argument('-e', '--epochs', default=3, type=int)
 args = parser.parse_args()
 
 logging.basicConfig(
     format='[%(asctime)s][%(name)s][%(levelname)s] %(message)s',
-    level=logging.DEBUG if args.verbose else logging.INFO)
+    level=logging.DEBUG)
 logger = logging.getLogger('train_bert.py')
 
 
@@ -76,7 +76,8 @@ def train(model, device, train_loader, optimizer, scheduler, epoch, classes):
             logger.info(
                 "Confusion matrix\n" +
                 "True\\Pred " + ' '.join([f"{cat:>10}" for cat in classes]) + "\n" +
-                '\n'.join([f"{cat:>10} " + ' '.join([f"{int(cnt):10d}" for cnt in row]) for cat, row in zip(classes, cm)])
+                '\n'.join(
+                    [f"{cat:>10} " + ' '.join([f"{int(cnt):10d}" for cnt in row]) for cat, row in zip(classes, cm)])
             )
 
         if (batch_id + 1) % config.log_interval * 10 == 0:
@@ -87,7 +88,8 @@ def train(model, device, train_loader, optimizer, scheduler, epoch, classes):
         # "Examples": example_images,
         "Train Accuracy": 100. * correct / len(train_loader.dataset),
         "Train Loss": loss,
-        "Train Confusion Matrix": cm})
+        "Train Confusion Matrix": ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=classes).plot()})
+    # TODO: Check if the confusion ,matrxi logging works??
 
 
 def test(model, device, test_loader, classes, epoch=None, mode='val'):
@@ -115,7 +117,7 @@ def test(model, device, test_loader, classes, epoch=None, mode='val'):
         # "Examples": example_images,
         f"{mode} Accuracy": accuracy,
         f"{mode} Loss": val_loss,
-        f"{mode} Confusion Matrix": cm})
+        f"{mode} Confusion Matrix": ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=classes).plot()})
 
     logger.info(f"epoch {epoch} val acc {accuracy:.4f}, loss {val_loss:.5f}")
     logger.info(
@@ -149,7 +151,7 @@ if __name__ == '__main__':
     config.overlap = 50
     config.batch_size = args.batch_size
     config.warmup_ratio = 0.1
-    config.num_epochs_fine_tune = 3
+    config.epochs = args.epochs
     config.max_grad_norm = 1
     config.log_interval = 3
     config.learning_rate = 5e-5
@@ -165,7 +167,7 @@ if __name__ == '__main__':
     logger.info("Successfully loaded KoBERT.")
 
     # Load data ###############################################################################################
-    data_path = str(PROJECT_DIR / 'data' /'processed' / 'labelled_{}.csv')
+    data_path = str(PROJECT_DIR / 'data' / 'processed' / 'labelled_{}.csv')
     logger.info(f"Loading data at {data_path}")
 
     if args.test_run:
@@ -235,7 +237,8 @@ if __name__ == '__main__':
         optimizer_grouped_parameters = [
             {'params': [p for n, p in clf_model.named_parameters() if not any(nd in n for nd in no_decay)],
              'weight_decay': 0.01},
-            {'params': [p for n, p in clf_model.named_parameters() if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
+            {'params': [p for n, p in clf_model.named_parameters() if any(nd in n for nd in no_decay)],
+             'weight_decay': 0.0}
         ]
 
         optimizer = AdamW(optimizer_grouped_parameters, lr=config.learning_rate)
@@ -249,7 +252,7 @@ if __name__ == '__main__':
         if args.device == 'cuda':
             logger.debug(torch.cuda.memory_summary())
 
-        t_total = len(train_dataloader) * config.num_epochs_fine_tune
+        t_total = len(train_dataloader) * config.epochs
         warmup_step = int(t_total * config.warmup_ratio)
 
         scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_step, num_training_steps=t_total)
@@ -257,10 +260,11 @@ if __name__ == '__main__':
     # 1.4 TRAIN!!!
     logger.info("Begin training")
     wandb.watch(clf_model, log="all")
-    for e in range(config.num_epochs_fine_tune):
+    for e in range(config.epochs):
         # 1.4.1 TRAIN
         if args.mode in ('train', 'all'):
-            train(clf_model, device, train_dataloader, optimizer, scheduler, epoch=e, classes=robert_data_train.label_decoder)
+            train(clf_model, device, train_dataloader, optimizer, scheduler, epoch=e,
+                  classes=robert_data_train.label_decoder)
 
             if args.device == 'cuda':
                 torch.cuda.empty_cache()
