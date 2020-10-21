@@ -34,6 +34,7 @@ parser.add_argument('-v', '--verbose', help="verbosity of log", action="store_tr
 parser.add_argument('--seed', help="random seed for pytorch", default=0, type=int)
 parser.add_argument('--warm_start', help='load saved fine-tuned clf and optimizer', action='store_true')
 parser.add_argument('-m', '--mode', help="train mode? val mode? all(both)?", choices=['train', 'validate', 'all'], default='all')
+parser.add_argument('-b', '--batch_size', default=16, type=int)
 args = parser.parse_args()
 
 logging.basicConfig(
@@ -146,7 +147,7 @@ if __name__ == '__main__':
     config = wandb.config
     config.segment_len = 200
     config.overlap = 50
-    config.batch_size = 64
+    config.batch_size = args.batch_size
     config.warmup_ratio = 0.1
     config.num_epochs_fine_tune = 3
     config.max_grad_norm = 1
@@ -188,16 +189,12 @@ if __name__ == '__main__':
     robert_data_val = SegmentedArticlesDataset(dataset_val, tok, config.segment_len, config.overlap, True, False)
     robert_data_test = SegmentedArticlesDataset(dataset_test, tok, config.segment_len, config.overlap, True, False)
     logger.info("Successfully loaded data. Articles are segmented and tokenized.")
-    
-    if args.device == 'cuda':
-        logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
 
     # Set device ###############################################################################################
     logger.info(f"Set device to {args.device}")
     device = torch.device(args.device)
 
     if args.device == 'cuda':
-        logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
 
