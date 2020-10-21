@@ -76,7 +76,7 @@ def train(model, device, train_loader, optimizer, scheduler, epoch, classes):
             logger.info(
                 "Confusion matrix\n" +
                 "True\\Pred " + ' '.join([f"{cat:>10}" for cat in classes]) + "\n" +
-                '\n'.join([f"{cat:>10} " + ' '.join([f"{cnt:10d}" for cnt in row]) for cat, row in zip(classes, cm)])
+                '\n'.join([f"{cat:>10} " + ' '.join([f"{int(cnt):10d}" for cnt in row]) for cat, row in zip(classes, cm)])
             )
 
         if (batch_id + 1) % config.log_interval * 10 == 0:
@@ -105,7 +105,7 @@ def test(model, device, test_loader, classes, epoch=None, mode='val'):
             label = label.long().to(device)
 
             out = model(token_ids, valid_length, segment_ids)
-            val_loss += nn.CrossEntropyLoss()(out, label, reduction='sum').item()
+            val_loss += nn.CrossEntropyLoss()(out, label).item()
             correct += num_correct(out, label)
             pred = torch.max(out, 1)[1].data.cpu().numpy()
             cm += confusion_matrix(label.data.cpu().numpy(), pred, labels=[0, 1, 2, 3])
@@ -121,7 +121,7 @@ def test(model, device, test_loader, classes, epoch=None, mode='val'):
     logger.info(
         "Confusion matrix\n" +
         "True\\Pred " + ' '.join([f"{cat:>10}" for cat in classes]) + "\n" +
-        '\n'.join([f"{cat:>10} " + ' '.join([f"{cnt:10d}" for cnt in row]) for cat, row in zip(classes, cm)])
+        '\n'.join([f"{cat:>10} " + ' '.join([f"{int(cnt):10d}" for cnt in row]) for cat, row in zip(classes, cm)])
     )
 
 
@@ -217,7 +217,7 @@ if __name__ == '__main__':
 
     # 1.2 Set up classifier model.
     clf_model = BERTClassifier(bertmodel, dr_rate=0.5).to(device)
-    if args.warm_start or args.mode in ('validate', 'all'):
+    if args.warm_start or args.mode == 'validate':
         logger.info("Loading saved state dict...")
         state_dict = torch.load(args.fine_tune_save)
         clf_model.load_state_dict(state_dict)
@@ -279,7 +279,7 @@ if __name__ == '__main__':
 
     logger.info("Saving final BERTClassifier state dict...")
     torch.save(clf_model.state_dict(), args.fine_tune_save)
-    wandb.save(args.fine_tune_save)
+    wandb.save(str(args.fine_tune_save))
 
     # Evaluate on test set
     test(clf_model, device, test_dataloader, classes=robert_data_test.label_decoder, mode='Test')
