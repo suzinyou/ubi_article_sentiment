@@ -13,15 +13,16 @@ from torch.utils.data import Dataset
 import gluonnlp as nlp
 from transformers import AdamW
 from transformers import get_linear_schedule_with_warmup
-
 from tqdm import tqdm
+import wandb
+from sklearn.metrics import confusion_matrix
 
 from article_sentiment.env import PROJECT_DIR
 from article_sentiment.kobert.utils import get_tokenizer
 from article_sentiment.kobert.pytorch_kobert import get_pytorch_kobert_model, get_kobert_model
 from article_sentiment.data.utils import SegmentedArticlesDataset, BERTDataset
 from article_sentiment.model import BERTClassifier
-from article_sentiment.utils import calc_accuracy
+from article_sentiment.utils import calc_accuracy, num_correct
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--device', help="`cpu` vs `gpu`", choices=['cpu', 'cuda'], default='cuda')
@@ -39,28 +40,95 @@ logging.basicConfig(
     format='[%(asctime)s][%(name)s][%(levelname)s] %(message)s',
     level=logging.DEBUG if args.verbose else logging.INFO)
 logger = logging.getLogger('train_bert.py')
-# log_format = logging.Formatter('[%(asctime)s][%(name)s][%(levelname)s] %(message)s')
-#
-# sh = logging.StreamHandler()
-# sh.setLevel(logging.DEBUG if args.verbose else logging.INFO)
-# sh.setFormatter(log_format)
-# logger.addHandler(sh)
 
-# if args.save_log:
-#     fh = logging.FileHandler(
-#         filename=PROJECT_DIR / 'logs' / f'train_bert_{datetime.now()}.log',
-#         mode='w')
-#     fh.setLevel(logging.DEBUG)
-#     fh.setFormatter(log_format)
-#     logger.addHandler(fh)
-torch.manual_seed(args.seed)
-np.random.seed(args.seed)
+
+def train(model, device, train_loader, optimizer, scheduler, epoch, classes):
+    correct = 0
+    cm = np.zeros((4, 4))
+    model.train()
+    for batch_id, (token_ids, valid_length, segment_ids, label) in enumerate(tqdm(train_loader)):
+        optimizer.zero_grad()
+
+        token_ids = token_ids.long().to(device)
+        segment_ids = segment_ids.long().to(device)
+        valid_length = valid_length  # ㅁㅝ지?
+        label = label.long().to(device)
+
+        out = model(token_ids, valid_length, segment_ids)
+
+        loss = nn.CrossEntropyLoss()(out, label)
+        loss.backward()
+
+        torch.nn.utils.clip_grad_norm_(model.parameters(), config.max_grad_norm)
+
+        optimizer.step()
+        scheduler.step()  # Update learning rate schedule
+        correct += num_correct(out, label)
+        pred = torch.max(out, 1)[1].data.cpu().numpy()
+        cm += confusion_matrix(label.data.cpu().numpy(), pred, labels=[0, 1, 2, 3])
+
+        accuracy = correct / (batch_id * train_loader.batch_size + len(label))
+        if (batch_id + 1) % config.log_interval == 0:
+            logger.info(
+                f"epoch {epoch + 1:2d} batch id {batch_id + 1:3d} "
+                f"loss {loss.data.cpu().numpy():5f} train acc {accuracy:.5f}")
+            logger.info(
+                "Confusion matrix\n" +
+                "True\\Pred " + ' '.join([f"{cat:>10}" for cat in classes]) + "\n" +
+                '\n'.join([f"{cat:>10} " + ' '.join([f"{cnt:10d}" for cnt in row]) for cat, row in zip(classes, cm)])
+            )
+
+        if (batch_id + 1) % config.log_interval * 10 == 0:
+            torch.save(model.state_dict(), args.fine_tune_save)
+            torch.save(optimizer.state_dict(), str(args.fine_tune_save).split('.')[0] + '_optimizer.dict')
+
+    wandb.log({
+        # "Examples": example_images,
+        "Train Accuracy": 100. * correct / len(train_loader.dataset),
+        "Train Loss": loss,
+        "Train Confusion Matrix": cm})
+
+
+def test(model, device, test_loader, classes, epoch=None, mode='val'):
+    # example_images = []
+
+    model.eval()
+    cm = np.zeros((4, 4))
+    val_loss = 0.0
+    correct = 0.0
+    with torch.no_grad():
+        for batch_id, (token_ids, valid_length, segment_ids, label) in enumerate(tqdm(test_loader)):
+            token_ids = token_ids.long().to(device)
+            segment_ids = segment_ids.long().to(device)
+            valid_length = valid_length
+            label = label.long().to(device)
+
+            out = model(token_ids, valid_length, segment_ids)
+            val_loss += nn.CrossEntropyLoss()(out, label, reduction='sum').item()
+            correct += num_correct(out, label)
+            pred = torch.max(out, 1)[1].data.cpu().numpy()
+            cm += confusion_matrix(label.data.cpu().numpy(), pred, labels=[0, 1, 2, 3])
+
+    accuracy = 100. * correct / len(test_loader.dataset)
+    wandb.log({
+        # "Examples": example_images,
+        f"{mode} Accuracy": accuracy,
+        f"{mode} Loss": val_loss,
+        f"{mode} Confusion Matrix": cm})
+
+    logger.info(f"epoch {epoch} val acc {accuracy:.4f}, loss {val_loss:.5f}")
+    logger.info(
+        "Confusion matrix\n" +
+        "True\\Pred " + ' '.join([f"{cat:>10}" for cat in classes]) + "\n" +
+        '\n'.join([f"{cat:>10} " + ' '.join([f"{cnt:10d}" for cnt in row]) for cat, row in zip(classes, cm)])
+    )
 
 
 if __name__ == '__main__':
-    # Check arg validity
     logger.info('Starting train_bert.py...')
+    wandb.init(project="ubi_article_sentiment")
 
+    # Check arg validity
     save_dir = Path(args.fine_tune_save).parent
     if not os.path.isdir(save_dir):
         raise ValueError(
@@ -74,25 +142,28 @@ if __name__ == '__main__':
 
     num_workers = os.cpu_count()
     input_size = 768
-    segment_len = 200
-    overlap = 50
-    batch_size = 64 
-    warmup_ratio = 0.1
-    num_epochs_fine_tune = 3 
-    max_grad_norm = 1
-    log_interval = 3 
-    learning_rate = 5e-5
 
-    # Load model
+    config = wandb.config
+    config.segment_len = 200
+    config.overlap = 50
+    config.batch_size = 64
+    config.warmup_ratio = 0.1
+    config.num_epochs_fine_tune = 3
+    config.max_grad_norm = 1
+    config.log_interval = 3
+    config.learning_rate = 5e-5
+    config.seed = args.seed
+
+    # Set random seed
+    torch.manual_seed(config.seed)
+    np.random.seed(config.seed)
+
+    # Load KoBERT ###############################################################################################
     logger.info("Loading KoBERT...")
     bertmodel, vocab = get_pytorch_kobert_model()
     logger.info("Successfully loaded KoBERT.")
-    if args.device == 'cuda':
-        logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
 
-    # Load data
+    # Load data ###############################################################################################
     data_path = str(PROJECT_DIR / 'data' /'processed' / 'labelled_{}.csv')
     logger.info(f"Loading data at {data_path}")
 
@@ -110,49 +181,53 @@ if __name__ == '__main__':
     dataset_test = nlp.data.TSVDataset(
         data_path.format('test'), field_indices=[0, 1], num_discard_samples=n_test_discard)
 
-    # Tokenizer
     tokenizer = get_tokenizer()
     tok = nlp.data.BERTSPTokenizer(tokenizer, vocab, lower=False)
 
-    robert_data_train = SegmentedArticlesDataset(dataset_train, tok, segment_len, overlap, True, False)
-    robert_data_val = SegmentedArticlesDataset(dataset_val, tok, segment_len, overlap, True, False)
-    robert_data_test = SegmentedArticlesDataset(dataset_test, tok, segment_len, overlap, True, False)
+    robert_data_train = SegmentedArticlesDataset(dataset_train, tok, config.segment_len, config.overlap, True, False)
+    robert_data_val = SegmentedArticlesDataset(dataset_val, tok, config.segment_len, config.overlap, True, False)
+    robert_data_test = SegmentedArticlesDataset(dataset_test, tok, config.segment_len, config.overlap, True, False)
     logger.info("Successfully loaded data. Articles are segmented and tokenized.")
     
     if args.device == 'cuda':
         logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
 
-    # Set device
+    # Set device ###############################################################################################
     logger.info(f"Set device to {args.device}")
     device = torch.device(args.device)
+
+    if args.device == 'cuda':
+        logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
     # 1. Fine-tune BERT ################################################################################################
 
     logger.info("Fine-tuning KoBERT on data!")
-    # 1.1 Load data
+
+    # 1.1 Create DataLoader (1 sample = 1 segment)
     data_train = BERTDataset.create_from_segmented(robert_data_train)
     data_val = BERTDataset.create_from_segmented(robert_data_val)
     data_test = BERTDataset.create_from_segmented(robert_data_test)
 
     train_dataloader = torch.utils.data.DataLoader(
-        data_train, batch_size=batch_size, num_workers=num_workers, shuffle=True)
+        data_train, batch_size=config.batch_size, num_workers=num_workers, shuffle=True)
     val_dataloader = torch.utils.data.DataLoader(
-        data_val, batch_size=batch_size, num_workers=num_workers, shuffle=True)
+        data_val, batch_size=config.batch_size, num_workers=num_workers, shuffle=True)
     test_dataloader = torch.utils.data.DataLoader(
-        data_test, batch_size=batch_size, num_workers=num_workers)
+        data_test, batch_size=config.batch_size, num_workers=num_workers)
     logger.info("Created data for KoBERT fine-tuning.")
 
     # 1.2 Set up classifier model.
     clf_model = BERTClassifier(bertmodel, dr_rate=0.5).to(device)
-    logger.info("KoBERT Classifier is instantiated.")
-    if args.warm_start:
-        logger.info("Warm start: loading saved state dict...")
+    if args.warm_start or args.mode in ('validate', 'all'):
+        logger.info("Loading saved state dict...")
         state_dict = torch.load(args.fine_tune_save)
         clf_model.load_state_dict(state_dict)
         logger.debug("Loaded saved state dict to BERTClassifier.")
 
-        if args.device == 'cuda':
-            logger.debug(torch.cuda.memory_summary())
+    if args.device == 'cuda':
+        logger.debug(torch.cuda.memory_summary())
 
     # 1.3 Set up training parameters
     #       Prepare optimizer and schedule (linear warmup and decay)
@@ -166,110 +241,51 @@ if __name__ == '__main__':
             {'params': [p for n, p in clf_model.named_parameters() if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
         ]
 
-        optimizer = AdamW(optimizer_grouped_parameters, lr=learning_rate)
+        optimizer = AdamW(optimizer_grouped_parameters, lr=config.learning_rate)
+
         if args.warm_start:
             state_dict = torch.load(str(args.fine_tune_save).split('.')[0] + '_optimizer.dict')
             optimizer.load_state_dict(state_dict)
+
         logger.debug("Loaded optimizer")
+
         if args.device == 'cuda':
             logger.debug(torch.cuda.memory_summary())
 
-        t_total = len(train_dataloader) * num_epochs_fine_tune
-        warmup_step = int(t_total * warmup_ratio)
+        t_total = len(train_dataloader) * config.num_epochs_fine_tune
+        warmup_step = int(t_total * config.warmup_ratio)
 
         scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_step, num_training_steps=t_total)
 
     # 1.4 TRAIN!!!
     logger.info("Begin training")
-    for e in range(num_epochs_fine_tune):
+    wandb.watch(clf_model, log="all")
+    for e in range(config.num_epochs_fine_tune):
         # 1.4.1 TRAIN
         if args.mode in ('train', 'all'):
-            train_acc = 0.0
-            clf_model.train()
-            for batch_id, (token_ids, valid_length, segment_ids, label) in enumerate(tqdm(train_dataloader)):
-                optimizer.zero_grad()
-                token_ids = token_ids.long().to(device)
-                segment_ids = segment_ids.long().to(device)
-                valid_length = valid_length  # ㅁㅝ지?
-                label = label.long().to(device)
-                out = clf_model(token_ids, valid_length, segment_ids)
-                loss = loss_fn(out, label)
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(clf_model.parameters(), max_grad_norm)
-                optimizer.step()
-                scheduler.step()  # Update learning rate schedule
-                train_acc += calc_accuracy(out, label)
-
-                del label, out, token_ids, segment_ids, valid_length
-                if args.device == 'cuda':
-                    torch.cuda.empty_cache()
-
-                if batch_id % log_interval == 0:
-                    logger.info("epoch {} batch id {} loss {} train acc {}".format(
-                        e + 1, batch_id + 1, loss.data.cpu().numpy(), train_acc / (batch_id + 1)))
-
-                if batch_id % log_interval * 10 == 0:
-                    torch.save(clf_model.state_dict(), args.fine_tune_save)
-                    torch.save(optimizer.state_dict(), str(args.fine_tune_save).split('.')[0] + '_optimizer.dict')
-
-            logger.info("epoch {} train acc {}".format(e + 1, train_acc / (batch_id + 1)))
-
-            if args.device == 'cuda':
-                logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
-
-
-        # 1.4.2. Validate
-        if args.mode in ('validate', 'all'):
-            clf_model.eval()
-            val_acc = 0.0
-            val_loss = 0.0
-            with torch.no_grad():
-                for batch_id, (token_ids, valid_length, segment_ids, label) in enumerate(tqdm(val_dataloader)):
-                    token_ids = token_ids.long().to(device)
-                    segment_ids = segment_ids.long().to(device)
-                    valid_length = valid_length
-                    label = label.long().to(device)
-                    out = clf_model(token_ids, valid_length, segment_ids)
-                    val_loss += loss_fn(out, label).float()
-                    val_acc += calc_accuracy(out, label)
-
-                    del label, out, token_ids, segment_ids, valid_length
+            train(clf_model, device, train_dataloader, optimizer, scheduler, epoch=e, classes=robert_data_train.label_decoder)
 
             if args.device == 'cuda':
                 torch.cuda.empty_cache()
                 logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
 
-            logger.info("epoch {} val acc {}, loss {}".format(e + 1, val_acc / (batch_id + 1), val_loss / (batch_id + 1)))
+        # 1.4.2. Validate
+        if args.mode in ('validate', 'all'):
+            test(clf_model, device, val_dataloader, classes=robert_data_val.label_decoder, epoch=e, mode='Validation')
+
+            if args.device == 'cuda':
+                torch.cuda.empty_cache()
+                logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
 
             if args.mode == 'validate':
                 break
 
-    logger.info("Saving BERTClassifier state dict...")
+    logger.info("Saving final BERTClassifier state dict...")
     torch.save(clf_model.state_dict(), args.fine_tune_save)
+    wandb.save(args.fine_tune_save)
 
-    clf_model.eval()
-    test_loss = 0.0
-    test_acc = 0.0
-    with torch.no_grad():
-        for batch_id, (token_ids, valid_length, segment_ids, label) in enumerate(tqdm(test_dataloader)):
-            token_ids = token_ids.long().to(device)
-            segment_ids = segment_ids.long().to(device)
-            valid_length = valid_length
-            label = label.long().to(device)
-            out = clf_model(token_ids, valid_length, segment_ids)
-            test_loss += loss_fn(out, label)
-            test_acc += calc_accuracy(out, label)
-
-        logger.info("test acc {}, loss {}".format(test_acc / (batch_id + 1), test_loss / (batch_id + 1)))
-
-    if args.device == 'cuda':
-        logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
-
-    if args.mode in ('validate', 'all'):
-        del clf_model.classifier, val_dataloader, label, out, token_ids, segment_ids
-
-    if args.mode in ('train', 'all'):
-        del optimizer, scheduler, train_dataloader
+    # Evaluate on test set
+    test(clf_model, device, test_dataloader, classes=robert_data_test.label_decoder, mode='Test')
 
     if args.device == 'cuda':
         torch.cuda.empty_cache()

@@ -84,6 +84,11 @@ class SegmentedArticlesDataset(Dataset):
         self.articles = articles
         self.labels = [np.int32(label_encoder[l]) for l in labels]
         self.label_encoder = label_encoder
+        self.label_decoder = []
+        for j in range(len(label_encoder)):
+            for k, v in label_encoder.items():
+                if v == j:
+                    self.label_decoder.append(k)
 
     def __getitem__(self, i):
         return (self.articles[i], self.labels[i],)
