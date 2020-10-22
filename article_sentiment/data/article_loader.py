@@ -19,7 +19,11 @@ class BERTOutputSequence(object):
                 _, pooler = bert_clf.bert(input_ids=token_ids, token_type_ids=segment_ids.long(),
                                           attention_mask=attention_mask.float().to(token_ids.device))
                 bert_outputs.append(pooler)
-            bert_output_seq = torch.cat(bert_outputs)
+                del token_ids, segment_ids, valid_length
+                if device.type == 'cuda':
+                    torch.cuda.empty_cache()
+
+            bert_output_seq = torch.cat(bert_outputs).to('cpu')  # temporarily move to cpu
             articles.append(bert_output_seq)
             labels.append(label)
 
