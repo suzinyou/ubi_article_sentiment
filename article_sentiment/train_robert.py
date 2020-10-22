@@ -195,27 +195,6 @@ if __name__ == '__main__':
 
     logger.info("Train RoBERT...")
 
-    # 2.2 Instantiate model
-    robert_model = RoBERT(
-        input_size=input_size,
-        lstm_hidden_size=config.lstm_hidden_size,
-        fc_hidden_size=config.fc_hidden_size,
-        dr_rate=0.5
-    ).to(device)
-    logger.info("RoBERT is instantiated.")
-    if args.device == 'cuda':
-        logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
-
-    # 2.3 Set up training parameters
-    no_decay = ['bias', 'LayerNorm.weight']
-    optimizer_grouped_parameters = [
-        {'params': [p for n, p in robert_model.named_parameters() if not any(nd in n for nd in no_decay)],
-         'weight_decay': 0.01},
-        {'params': [p for n, p in robert_model.named_parameters() if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
-    ]
-    optimizer = AdamW(optimizer_grouped_parameters, lr=config.learning_rate)
-    loss_fn = nn.CrossEntropyLoss()
-
     # 2.4 Load BERT model
     logger.info("Loading KoBERT...")
     clf_model = BERTClassifier(bertmodel, dr_rate=0.5).to(device)
@@ -267,6 +246,28 @@ if __name__ == '__main__':
     #
     # robert_train_dataloader = torch.utils.data.DataLoader(robert_data_train, collate_fn=collate, batch_size=batch_size, num_workers=num_workers)
     # robert_test_dataloader = torch.utils.data.DataLoader(robert_data_test, collate_fn=collate, batch_size=batch_size, num_workers=num_workers)
+
+    # 2.2 Instantiate model
+    robert_model = RoBERT(
+        input_size=input_size,
+        lstm_hidden_size=config.lstm_hidden_size,
+        fc_hidden_size=config.fc_hidden_size,
+        dr_rate=0.5
+    ).to(device)
+    logger.info("RoBERT is instantiated.")
+    if args.device == 'cuda':
+        logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
+
+    # 2.3 Set up training parameters
+    no_decay = ['bias', 'LayerNorm.weight']
+    optimizer_grouped_parameters = [
+        {'params': [p for n, p in robert_model.named_parameters() if not any(nd in n for nd in no_decay)],
+         'weight_decay': 0.01},
+        {'params': [p for n, p in robert_model.named_parameters() if any(nd in n for nd in no_decay)],
+         'weight_decay': 0.0}
+    ]
+    optimizer = AdamW(optimizer_grouped_parameters, lr=config.learning_rate)
+    loss_fn = nn.CrossEntropyLoss()
 
     # TODO: schedule according to the paper
     #  (initially 0.001, reduced by 0.95 if validation loss does not decrease for 3 epochs)

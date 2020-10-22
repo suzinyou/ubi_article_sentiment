@@ -9,15 +9,16 @@ class BERTOutputSequence(object):
         for sample, label in dataset:
             bert_outputs = []
             for token_ids, valid_length, segment_ids in sample:
-                token_ids = torch.reshape(torch.Tensor(token_ids), (1, -1)).long().to(device)
-                segment_ids = torch.reshape(torch.Tensor(segment_ids), (1, -1)).long().to(device)
-                valid_length = valid_length.reshape(1,)
-
                 # Get BERT output (batch_size, 768)
                 # TODO: token ids, etc. must have ndim=2 !!!
-                attention_mask = bert_clf.gen_attention_mask(token_ids, valid_length)
-                _, pooler = bert_clf.bert(input_ids=token_ids, token_type_ids=segment_ids.long(),
-                                          attention_mask=attention_mask.float().to(token_ids.device))
+                with torch.no_grad():
+                    token_ids = torch.reshape(torch.Tensor(token_ids), (1, -1)).long().to(device)
+                    segment_ids = torch.reshape(torch.Tensor(segment_ids), (1, -1)).long().to(device)
+                    valid_length = valid_length.reshape(1, )
+
+                    attention_mask = bert_clf.gen_attention_mask(token_ids, valid_length)
+                    _, pooler = bert_clf.bert(input_ids=token_ids, token_type_ids=segment_ids.long(),
+                                              attention_mask=attention_mask.float().to(token_ids.device))
                 bert_outputs.append(pooler)
                 del token_ids, segment_ids, valid_length
                 if device.type == 'cuda':
