@@ -128,6 +128,8 @@ def test(model, device, test_loader, classes, epoch=None, mode='val'):
 
 
 if __name__ == '__main__':
+    wandb.init(project="ubi_article_sentiment")
+     
     logger.info('Starting train_bert.py...')
 
     # Check arg validity
@@ -145,7 +147,6 @@ if __name__ == '__main__':
     num_workers = os.cpu_count()
     input_size = 768
 
-    wandb.init(project="ubi_article_sentiment")
     config = wandb.config
     config.segment_len = 200
     config.overlap = 50
