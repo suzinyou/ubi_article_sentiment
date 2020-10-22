@@ -9,8 +9,8 @@ class BERTOutputSequence(object):
         for sample, label in dataset:
             bert_outputs = []
             for token_ids, valid_length, segment_ids in sample:
-                token_ids = torch.reshape(torch.Tensor(token_ids), (1, -1)).long().to('cpu')
-                segment_ids = torch.reshape(torch.Tensor(segment_ids), (1, -1)).long().to('cpu')
+                token_ids = torch.reshape(torch.Tensor(token_ids), (1, -1)).long().to(device)
+                segment_ids = torch.reshape(torch.Tensor(segment_ids), (1, -1)).long().to(device)
                 valid_length = valid_length.reshape(1,)
 
                 # Get BERT output (batch_size, 768)

@@ -78,7 +78,7 @@ def train(model, device, train_loader, optimizer, epoch, classes):
         # "Examples": example_images,
         "Train Accuracy": 100. * correct / len(train_loader.dataset),
         "Train Loss": loss,
-        "Train Confusion Matrix": ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=classes).plot()})
+        "Train Confusion Matrix": ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=classes).plot().figure_})
 
 
 def test(model, device, test_loader, scheduler, classes, epoch=None, mode='val'):
@@ -105,7 +105,7 @@ def test(model, device, test_loader, scheduler, classes, epoch=None, mode='val')
         # "Examples": example_images,
         f"{mode} Accuracy": accuracy,
         f"{mode} Loss": val_loss,
-        f"{mode} Confusion Matrix": ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=classes).plot()})
+        f"{mode} Confusion Matrix": ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=classes).plot().figure_})
 
     logger.info(f"epoch {epoch + 1:2d} val acc {accuracy:.4f}, loss {val_loss:.5f}")
     logger.info(
