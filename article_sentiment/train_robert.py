@@ -28,7 +28,7 @@ parser.add_argument('--fine_tune_load', help="load path for fine-tuned BERT clas
 parser.add_argument('--clf_save', help='path to which classifier is saved', default=PROJECT_DIR / 'models' / 'classifier.dict')
 parser.add_argument('--test_run', help="test run the code on small sample (2 lines of train and test each)", action='store_true')
 parser.add_argument('--seed', help="random seed for pytorch", default=0, type=int)
-parser.add_argument('--warm_start', help='load saved fine-tuned clf and optimizer', action='store_true')
+
 parser.add_argument('-b', '--batch_size', default=16, type=int)
 parser.add_argument('-e', '--epochs', default=10, type=int)
 args = parser.parse_args()
@@ -118,7 +118,6 @@ def test(model, device, test_loader, scheduler, classes, epoch=None, mode='val')
 if __name__ == '__main__':
     # Check arg validity
     logger.info('Starting train_robert.py...')
-    wandb.init(project="ubi_article_sentiment-RoBERT")
 
     load_path = Path(args.fine_tune_load)
     if not os.path.exists(load_path):
@@ -135,6 +134,7 @@ if __name__ == '__main__':
     num_workers = os.cpu_count()
     input_size = 768
 
+    wandb.init(project="ubi_article_sentiment-RoBERT")
     config = wandb.config
     config.segment_len = 200
     config.overlap = 50

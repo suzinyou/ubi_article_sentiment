@@ -88,7 +88,7 @@ def train(model, device, train_loader, optimizer, scheduler, epoch, classes):
         # "Examples": example_images,
         "Train Accuracy": 100. * correct / len(train_loader.dataset),
         "Train Loss": loss,
-        "Train Confusion Matrix": ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=classes).plot()})
+        "Train Confusion Matrix": ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=classes).plot().figure_})
     # TODO: Check if the confusion ,matrxi logging works??
 
 
@@ -117,7 +117,7 @@ def test(model, device, test_loader, classes, epoch=None, mode='val'):
         # "Examples": example_images,
         f"{mode} Accuracy": accuracy,
         f"{mode} Loss": val_loss,
-        f"{mode} Confusion Matrix": ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=classes).plot()})
+        f"{mode} Confusion Matrix": ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=classes).plot().figure_})
 
     logger.info(f"epoch {epoch} val acc {accuracy:.4f}, loss {val_loss:.5f}")
     logger.info(
@@ -129,7 +129,6 @@ def test(model, device, test_loader, classes, epoch=None, mode='val'):
 
 if __name__ == '__main__':
     logger.info('Starting train_bert.py...')
-    wandb.init(project="ubi_article_sentiment")
 
     # Check arg validity
     save_dir = Path(args.fine_tune_save).parent
@@ -146,6 +145,7 @@ if __name__ == '__main__':
     num_workers = os.cpu_count()
     input_size = 768
 
+    wandb.init(project="ubi_article_sentiment")
     config = wandb.config
     config.segment_len = 200
     config.overlap = 50
