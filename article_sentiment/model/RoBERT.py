@@ -6,7 +6,7 @@ class RoBERT(nn.Module):
                  input_size=768,
                  lstm_hidden_size=100,
                  fc_hidden_size=30,
-                 num_classes=3,
+                 num_classes=4,
                  dr_rate=None,
                  params=None):
         super(RoBERT, self).__init__()

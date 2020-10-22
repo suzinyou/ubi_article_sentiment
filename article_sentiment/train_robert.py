@@ -34,7 +34,7 @@ parser.add_argument('-e', '--epochs', default=10, type=int)
 args = parser.parse_args()
 
 
-logging.basicConfig(level=logging.DEBUG,
+logging.basicConfig(level=logging.INFO,
                     format='[%(asctime)s][%(name)s][%(levelname)s] %(message)s')
 logger = logging.getLogger('train_robert.py')
 
@@ -107,13 +107,15 @@ def test(model, device, test_loader, scheduler, classes, epoch=None, mode='val')
         f"{mode} Loss": val_loss,
         f"{mode} Confusion Matrix": ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=classes).plot().figure_})
 
-    logger.info(f"epoch {epoch + 1:2d} val acc {accuracy:.4f}, loss {val_loss:.5f}")
+    if mode == 'val' or mode == 'Validation':
+        logger.info(f"epoch {epoch + 1:2d} val acc {accuracy:.4f}, loss {val_loss:.5f}")        
+    elif mode == 'test' or mode == 'Test':
+        logger.info(f"test acc {accuracy:.4f}, loss {test_loss:.5f}")
     logger.info(
         "Confusion matrix\n" +
         "True\\Pred " + ' '.join([f"{cat:>10}" for cat in classes]) + "\n" +
         '\n'.join([f"{cat:>10} " + ' '.join([f"{int(cnt):10d}" for cnt in row]) for cat, row in zip(classes, cm)])
     )
-
 
 if __name__ == '__main__':
     wandb.init(project="ubi_article_sentiment-RoBERT")
@@ -142,7 +144,7 @@ if __name__ == '__main__':
     config.warmup_ratio = 0.1
     config.epochs = args.epochs
     config.max_grad_norm = 1
-    config.log_interval = 10
+    config.log_interval = 3
     config.learning_rate = 1e-4
     config.lstm_hidden_size = 100
     config.fc_hidden_size = 30
