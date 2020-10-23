@@ -11,7 +11,7 @@ import torch
 import wandb
 from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
 from torch import nn
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from tqdm import tqdm
 from transformers import AdamW
 from transformers import get_linear_schedule_with_warmup
@@ -39,7 +39,7 @@ args = parser.parse_args()
 
 logging.basicConfig(
     format='[%(asctime)s][%(name)s][%(levelname)s] %(message)s',
-    level=logging.DEBUG)
+    level=logging.INFO)
 logger = logging.getLogger('train_bert.py')
 
 
@@ -193,7 +193,7 @@ if __name__ == '__main__':
     robert_data_test = SegmentedArticlesDataset(dataset_test, tok, config.segment_len, config.overlap, True, False)
     logger.info("Successfully loaded data. Articles are segmented and tokenized.")
 
-    # Set device ###############################################################################################
+    # Set device #######################################################################################################
     logger.info(f"Set device to {args.device}")
     device = torch.device(args.device)
 
@@ -210,12 +210,12 @@ if __name__ == '__main__':
     data_val = BERTDataset.create_from_segmented(robert_data_val)
     data_test = BERTDataset.create_from_segmented(robert_data_test)
 
-    train_dataloader = torch.utils.data.DataLoader(
-        data_train, batch_size=config.batch_size, num_workers=num_workers, shuffle=True)
-    val_dataloader = torch.utils.data.DataLoader(
-        data_val, batch_size=config.batch_size, num_workers=num_workers, shuffle=True)
-    test_dataloader = torch.utils.data.DataLoader(
-        data_test, batch_size=config.batch_size, num_workers=num_workers)
+    train_dataloader = DataLoader(
+        data_train, batch_size=config.batch_size,
+        sampler=WeightedRandomSampler(data_train.sample_weight, len(data_train)),
+        num_workers=num_workers)
+    val_dataloader = DataLoader(data_val, batch_size=config.batch_size, num_workers=num_workers)
+    test_dataloader = DataLoader(data_test, batch_size=config.batch_size, num_workers=num_workers)
     logger.info("Created data for KoBERT fine-tuning.")
 
     # 1.2 Set up classifier model.

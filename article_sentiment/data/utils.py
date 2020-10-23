@@ -142,6 +142,13 @@ class BERTDataset(Dataset):
 
         return cls(segments, labels)
 
+    @property
+    def sample_weight(self):
+        num_samples = np.unique(self.labels, return_counts=True)[1]
+        class_weights = 1 / num_samples
+        sample_weight = class_weights[self.labels]
+        return sample_weight
+
     def __getitem__(self, i):
         # TODO: make this compatible with base class
         return (self.segments[i] + (self.labels[i],))
