@@ -117,6 +117,7 @@ def test(model, device, test_loader, scheduler, classes, epoch=None, mode='val')
         '\n'.join([f"{cat:>10} " + ' '.join([f"{int(cnt):10d}" for cnt in row]) for cat, row in zip(classes, cm)])
     )
 
+
 if __name__ == '__main__':
     wandb.init(project="ubi_article_sentiment-RoBERT")
     # Check arg validity
@@ -178,6 +179,9 @@ if __name__ == '__main__':
         data_path.format('val'), field_indices=[0, 1], num_discard_samples=n_val_discard)
     dataset_test = nlp.data.TSVDataset(
         data_path.format('test'), field_indices=[0, 1], num_discard_samples=n_test_discard)
+    # HERE I am testing if more data -> better performance!!
+    # by incorporating test set into train and see if validation score improves
+    dataset_train = nlp.data.ConcatDataset([dataset_train, dataset_test])
 
     # Tokenizer
     tokenizer = get_tokenizer()
@@ -185,7 +189,7 @@ if __name__ == '__main__':
 
     robert_data_train = SegmentedArticlesDataset(dataset_train, tok, config.segment_len, config.overlap, True, False)
     robert_data_val = SegmentedArticlesDataset(dataset_val, tok, config.segment_len, config.overlap, True, False)
-    robert_data_test = SegmentedArticlesDataset(dataset_test, tok, config.segment_len, config.overlap, True, False)
+    # robert_data_test = SegmentedArticlesDataset(dataset_test, tok, config.segment_len, config.overlap, True, False)
     logger.info("Successfully loaded data. Articles are segmented and tokenized.")
 
     if args.device == 'cuda':
@@ -211,13 +215,13 @@ if __name__ == '__main__':
         robert_data_train, batch_size=config.batch_size, bert_clf=clf_model, device=device)
     val_sequences = BERTOutputSequence(
         robert_data_val, batch_size=config.batch_size, bert_clf=clf_model, device=device)
-    test_sequences = BERTOutputSequence(
-        robert_data_test, batch_size=config.batch_size, bert_clf=clf_model, device=device)
+    # test_sequences = BERTOutputSequence(
+    #     robert_data_test, batch_size=config.batch_size, bert_clf=clf_model, device=device)
 
     # TODO: use collate_fn argument in DataLoader to utilize multiprocessing etc?
     robert_train_dataloader = train_sequences
     robert_val_dataloader = val_sequences
-    robert_test_dataloader = test_sequences
+    # robert_test_dataloader = test_sequences
     logger.info("Successfully loaded RoBERT data")
     if args.device == 'cuda':
         logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
@@ -300,9 +304,9 @@ if __name__ == '__main__':
     wandb.save(str(args.clf_save))
 
     # 2.7 Evaludate on test set
-    test(
-        robert_model, device, robert_val_dataloader, scheduler,
-        classes=robert_data_val.label_decoder, mode='Test')
+    # test(
+    #     robert_model, device, robert_val_dataloader, scheduler,
+    #     classes=robert_data_val.label_decoder, mode='Test')
 
     if args.device == 'cuda':
         torch.cuda.empty_cache()
