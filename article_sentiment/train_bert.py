@@ -184,13 +184,16 @@ if __name__ == '__main__':
         data_path.format('val'), field_indices=[0, 1], num_discard_samples=n_val_discard)
     dataset_test = nlp.data.TSVDataset(
         data_path.format('test'), field_indices=[0, 1], num_discard_samples=n_test_discard)
+    # HERE I am testing if more data -> better performance!!
+    # by incorporating test set into train and see if validation score improves
+    dataset_train = nlp.data.ConcatDataset([dataset_train, dataset_test])
 
     tokenizer = get_tokenizer()
     tok = nlp.data.BERTSPTokenizer(tokenizer, vocab, lower=False)
 
     robert_data_train = SegmentedArticlesDataset(dataset_train, tok, config.segment_len, config.overlap, True, False)
     robert_data_val = SegmentedArticlesDataset(dataset_val, tok, config.segment_len, config.overlap, True, False)
-    robert_data_test = SegmentedArticlesDataset(dataset_test, tok, config.segment_len, config.overlap, True, False)
+    # robert_data_test = SegmentedArticlesDataset(dataset_test, tok, config.segment_len, config.overlap, True, False)
     logger.info("Successfully loaded data. Articles are segmented and tokenized.")
 
     # Set device #######################################################################################################
@@ -208,14 +211,14 @@ if __name__ == '__main__':
     # 1.1 Create DataLoader (1 sample = 1 segment)
     data_train = BERTDataset.create_from_segmented(robert_data_train)
     data_val = BERTDataset.create_from_segmented(robert_data_val)
-    data_test = BERTDataset.create_from_segmented(robert_data_test)
+    # data_test = BERTDataset.create_from_segmented(robert_data_test)
 
     train_dataloader = DataLoader(
         data_train, batch_size=config.batch_size,
         sampler=WeightedRandomSampler(data_train.sample_weight, len(data_train)),
         num_workers=num_workers)
     val_dataloader = DataLoader(data_val, batch_size=config.batch_size, num_workers=num_workers)
-    test_dataloader = DataLoader(data_test, batch_size=config.batch_size, num_workers=num_workers)
+    # test_dataloader = DataLoader(data_test, batch_size=config.batch_size, num_workers=num_workers)
     logger.info("Created data for KoBERT fine-tuning.")
 
     # 1.2 Set up classifier model.
@@ -287,7 +290,7 @@ if __name__ == '__main__':
     wandb.save(str(args.fine_tune_save))
 
     # Evaluate on test set
-    test(clf_model, device, test_dataloader, classes=robert_data_test.label_decoder, mode='Test')
+    # test(clf_model, device, test_dataloader, classes=robert_data_test.label_decoder, mode='Test')
 
     if args.device == 'cuda':
         torch.cuda.empty_cache()
