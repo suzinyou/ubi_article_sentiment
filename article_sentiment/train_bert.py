@@ -84,12 +84,14 @@ def train(model, device, train_loader, optimizer, scheduler, epoch, classes):
             torch.save(model.state_dict(), args.fine_tune_save)
             torch.save(optimizer.state_dict(), str(args.fine_tune_save).split('.')[0] + '_optimizer.dict')
 
-    wandb.log({
+    return {
         # "Examples": example_images,
         "Train Accuracy": 100. * correct / len(train_loader.dataset),
         "Train Loss": loss,
-        "Train Confusion Matrix": ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=classes).plot().figure_})
-    # TODO: Check if the confusion ,matrxi logging works??
+        "Train Confusion Matrix": ConfusionMatrixDisplay(
+            confusion_matrix=cm, display_labels=classes
+        ).plot().figure_
+    }
 
 
 def test(model, device, test_loader, classes, epoch=None, mode='val'):
@@ -113,11 +115,6 @@ def test(model, device, test_loader, classes, epoch=None, mode='val'):
             cm += confusion_matrix(label.data.cpu().numpy(), pred, labels=[0, 1, 2, 3])
 
     accuracy = 100. * correct / len(test_loader.dataset)
-    wandb.log({
-        # "Examples": example_images,
-        f"{mode} Accuracy": accuracy,
-        f"{mode} Loss": val_loss,
-        f"{mode} Confusion Matrix": ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=classes).plot().figure_})
 
     logger.info(f"epoch {epoch} val acc {accuracy:.4f}, loss {val_loss:.5f}")
     logger.info(
@@ -125,6 +122,16 @@ def test(model, device, test_loader, classes, epoch=None, mode='val'):
         "True\\Pred " + ' '.join([f"{cat:>10}" for cat in classes]) + "\n" +
         '\n'.join([f"{cat:>10} " + ' '.join([f"{int(cnt):10d}" for cnt in row]) for cat, row in zip(classes, cm)])
     )
+
+    return {
+        # "Examples": example_images,
+        f"{mode} Accuracy": accuracy,
+        f"{mode} Loss": val_loss,
+        f"{mode} Confusion Matrix": ConfusionMatrixDisplay(
+            confusion_matrix=cm, display_labels=classes
+        ).plot().figure_
+    }
+
 
 
 if __name__ == '__main__':
@@ -263,17 +270,23 @@ if __name__ == '__main__':
     wandb.watch(clf_model, log="all")
     for e in range(config.epochs):
         # 1.4.1 TRAIN
+        logs = {}
         if args.mode in ('train', 'all'):
-            train(clf_model, device, train_dataloader, optimizer, scheduler, epoch=e,
-                  classes=robert_data_train.label_decoder)
-
+            train_logs = train(
+                clf_model, device, train_dataloader, optimizer, scheduler, epoch=e,
+                classes=robert_data_train.label_decoder)
+            logs.update(train_logs)
             if args.device == 'cuda':
                 torch.cuda.empty_cache()
                 logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
 
         # 1.4.2. Validate
         if args.mode in ('validate', 'all'):
-            test(clf_model, device, val_dataloader, classes=robert_data_val.label_decoder, epoch=e, mode='Validation')
+            test_logs = test(
+                clf_model, device, val_dataloader,
+                classes=robert_data_val.label_decoder, epoch=e, mode='Validation'
+            )
+            logs.update(test_logs)
 
             if args.device == 'cuda':
                 torch.cuda.empty_cache()
@@ -281,6 +294,8 @@ if __name__ == '__main__':
 
             if args.mode == 'validate':
                 break
+
+        wandb.log(logs)
 
     logger.info("Saving final BERTClassifier state dict...")
     torch.save(clf_model.state_dict(), args.fine_tune_save)
