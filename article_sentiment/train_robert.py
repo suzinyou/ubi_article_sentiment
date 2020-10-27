@@ -117,6 +117,7 @@ def test(model, device, test_loader, scheduler, classes, epoch=None, mode='val')
         '\n'.join([f"{cat:>10} " + ' '.join([f"{int(cnt):10d}" for cnt in row]) for cat, row in zip(classes, cm)])
     )
 
+
 if __name__ == '__main__':
     wandb.init(project="ubi_article_sentiment-RoBERT")
     # Check arg validity
@@ -162,7 +163,7 @@ if __name__ == '__main__':
         logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
 
     # Load data ###############################################################################################
-    data_path = str(PROJECT_DIR / 'data' /'processed' / 'labelled_{}.csv')
+    data_path = str(PROJECT_DIR / 'data' / 'processed' / 'more_irr' / 'labelled_{}.csv')
     logger.info(f"Loading data at {data_path}")
 
     if args.test_run:
