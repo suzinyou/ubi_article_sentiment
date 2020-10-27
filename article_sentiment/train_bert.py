@@ -148,8 +148,8 @@ if __name__ == '__main__':
     input_size = 768
 
     config = wandb.config
-    config.segment_len = 200
-    config.overlap = 50
+    config.segment_len = 320
+    config.overlap = 80
     config.batch_size = args.batch_size
     config.warmup_ratio = 0.1
     config.epochs = args.epochs
