@@ -15,8 +15,10 @@ from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from tqdm import tqdm
 from transformers import AdamW
 from transformers import get_linear_schedule_with_warmup
+import matplotlib.pyplot as plt
+plt.rcParams["font.family"] = 'NanumBarunGothic'
 
-from article_sentiment.data.utils import SegmentedArticlesDataset, BERTDataset
+from article_sentiment.data.dataset import SegmentedArticlesDataset, BERTDataset
 from article_sentiment.env import PROJECT_DIR
 from article_sentiment.kobert.pytorch_kobert import get_pytorch_kobert_model
 from article_sentiment.kobert.utils import get_tokenizer
@@ -52,7 +54,7 @@ def train(model, device, train_loader, optimizer, scheduler, epoch, classes):
 
         token_ids = token_ids.long().to(device)
         segment_ids = segment_ids.long().to(device)
-        valid_length = valid_length  # ㅁㅝ지?
+        valid_length = valid_length
         label = label.long().to(device)
 
         out = model(token_ids, valid_length, segment_ids)
@@ -133,7 +135,6 @@ def test(model, device, test_loader, classes, epoch=None, mode='val'):
     }
 
 
-
 if __name__ == '__main__':
     wandb.init(project="ubi_article_sentiment")
      
@@ -163,6 +164,7 @@ if __name__ == '__main__':
     config.max_grad_norm = 1
     config.log_interval = 3
     config.learning_rate = 5e-5
+    config.dropout_rate = 0.0
     config.seed = args.seed
 
     # Set random seed
@@ -175,7 +177,7 @@ if __name__ == '__main__':
     logger.info("Successfully loaded KoBERT.")
 
     # Load data ###############################################################################################
-    data_path = str(PROJECT_DIR / 'data' / 'processed' / 'labelled_{}.csv')
+    data_path = str(PROJECT_DIR / 'data' / 'processed' / 'labelled320_{}.csv')
     logger.info(f"Loading data at {data_path}")
 
     if args.test_run:
@@ -209,7 +211,6 @@ if __name__ == '__main__':
         torch.backends.cudnn.benchmark = False
 
     # 1. Fine-tune BERT ################################################################################################
-
     logger.info("Fine-tuning KoBERT on data!")
 
     # 1.1 Create DataLoader (1 sample = 1 segment)
@@ -226,7 +227,7 @@ if __name__ == '__main__':
     logger.info("Created data for KoBERT fine-tuning.")
 
     # 1.2 Set up classifier model.
-    clf_model = BERTClassifier(bertmodel, dr_rate=0.5).to(device)
+    clf_model = BERTClassifier(bertmodel, dr_rate=config.dropout_rate).to(device)
     if args.warm_start or args.mode == 'validate':
         logger.info("Loading saved state dict...")
         state_dict = torch.load(args.fine_tune_save)

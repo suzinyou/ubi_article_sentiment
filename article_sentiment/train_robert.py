@@ -15,7 +15,7 @@ from tqdm import tqdm
 from transformers import AdamW
 
 from article_sentiment.data.article_loader import BERTOutputSequence
-from article_sentiment.data.utils import SegmentedArticlesDataset
+from article_sentiment.data.dataset import SegmentedArticlesDataset
 from article_sentiment.env import PROJECT_DIR
 from article_sentiment.kobert.pytorch_kobert import get_pytorch_kobert_model
 from article_sentiment.kobert.utils import get_tokenizer
@@ -117,6 +117,7 @@ def test(model, device, test_loader, scheduler, classes, epoch=None, mode='val')
         '\n'.join([f"{cat:>10} " + ' '.join([f"{int(cnt):10d}" for cnt in row]) for cat, row in zip(classes, cm)])
     )
 
+
 if __name__ == '__main__':
     wandb.init(project="ubi_article_sentiment-RoBERT")
     # Check arg validity
@@ -162,7 +163,7 @@ if __name__ == '__main__':
         logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
 
     # Load data ###############################################################################################
-    data_path = str(PROJECT_DIR / 'data' /'processed' / 'labelled_{}.csv')
+    data_path = str(PROJECT_DIR / 'data' /'processed' / 'labelled320_{}.csv')
     logger.info(f"Loading data at {data_path}")
 
     if args.test_run:

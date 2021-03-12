@@ -33,4 +33,5 @@ class BERTClassifier(nn.Module):
         else:
             out = pooler
 
-        return self.classifier(out)
+        out = self.classifier(out)
+        return out
