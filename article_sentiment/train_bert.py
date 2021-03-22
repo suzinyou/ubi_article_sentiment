@@ -118,7 +118,7 @@ def test(model, device, test_loader, classes, epoch=None, mode='val'):
 
     accuracy = 100. * correct / len(test_loader.dataset)
 
-    logger.info(f"epoch {epoch} val acc {accuracy:.4f}, loss {val_loss:.5f}")
+    logger.info(f"epoch {epoch + 1:2d} val acc {accuracy:.4f}, loss {val_loss:.5f}")
     logger.info(
         "Confusion matrix\n" +
         "True\\Pred " + ' '.join([f"{cat:>10}" for cat in classes]) + "\n" +
@@ -197,9 +197,18 @@ if __name__ == '__main__':
     tokenizer = get_tokenizer()
     tok = nlp.data.BERTSPTokenizer(tokenizer, vocab, lower=False)
 
-    robert_data_train = SegmentedArticlesDataset(dataset_train, tok, config.segment_len, config.overlap, True, False)
-    robert_data_val = SegmentedArticlesDataset(dataset_val, tok, config.segment_len, config.overlap, True, False)
-    robert_data_test = SegmentedArticlesDataset(dataset_test, tok, config.segment_len, config.overlap, True, False)
+    robert_data_train = SegmentedArticlesDataset(
+        dataset=dataset_train, bert_tokenizer=tok,
+        seg_len=config.segment_len, shift=config.overlap,
+        pad=True, pair=False, filter_kw_segment=config.filter_kw_segment)
+    robert_data_val = SegmentedArticlesDataset(
+        dataset=dataset_val, bert_tokenizer=tok,
+        seg_len=config.segment_len, shift=config.overlap,
+        pad=True, pair=False, filter_kw_segment=config.filter_kw_segment)
+    robert_data_test = SegmentedArticlesDataset(
+        dataset=dataset_test, bert_tokenizer=tok,
+        seg_len=config.segment_len, shift=config.overlap,
+        pad=True, pair=False, filter_kw_segment=config.filter_kw_segment)
     logger.info("Successfully loaded data. Articles are segmented and tokenized.")
 
     # Set device #######################################################################################################

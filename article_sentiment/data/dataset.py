@@ -10,7 +10,7 @@ from article_sentiment.data.utils import (
 
 class SegmentedArticlesDataset(Dataset):
     def __init__(self, dataset, bert_tokenizer, seg_len, shift,
-                 pad, pair):
+                 pad, pair, filter_kw_segment=False):
         self.transform = nlp.data.BERTSentenceTransform(
             bert_tokenizer, max_seq_length=seg_len+2, pad=pad, pair=pair)
 
@@ -30,7 +30,26 @@ class SegmentedArticlesDataset(Dataset):
             # types = list(generate_overlapping_segments(input_token_types, seg_len, shift))
 
             # articles.append(list(zip(ids, val_len, types)))
-            articles.append([self.transform([segment]) for segment in segments])
+            if filter_kw_segment:
+                has_kw = []
+
+                for segment in segments:
+                    if '기본소득' in segment or '기본 소득' in segment:
+                        has_kw.append(True)
+                    else:
+                        has_kw.append(False)
+                has_kw = np.asarray(has_kw)
+                before_has_kw = np.r_[has_kw[1:], False]
+                after_has_kw = np.r_[False, has_kw[:-1]]
+                around_kw = np.logical_or(np.logical_or(has_kw, before_has_kw), after_has_kw)
+
+                valid_segments = [
+                    s for s, is_around_kw in zip(segments, around_kw) if is_around_kw
+                ]
+            else:
+                valid_segments = segments
+
+            articles.append([self.transform([segment]) for segment in valid_segments])
             labels.append(label)
 
         unique_labels = np.unique(labels)
