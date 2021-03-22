@@ -136,8 +136,8 @@ def test(model, device, test_loader, classes, epoch=None, mode='val'):
 
 
 if __name__ == '__main__':
-    wandb.init(project="ubi_article_sentiment")
-     
+    # wandb.init(project="ubi_article_sentiment")
+
     logger.info('Starting train_bert.py...')
 
     # Check arg validity
@@ -155,17 +155,22 @@ if __name__ == '__main__':
     num_workers = os.cpu_count()
     input_size = 768
 
-    config = wandb.config
+    class Config(object):
+        def __init__(self):
+            pass
+    # config = wandb.config
+    config = Config()
     config.segment_len = 200
     config.overlap = 50
     config.batch_size = args.batch_size
     config.warmup_ratio = 0.1
     config.epochs = args.epochs
     config.max_grad_norm = 1
-    config.log_interval = 3
+    config.log_interval = 10
     config.learning_rate = 5e-5
-    config.dropout_rate = 0.0
+    config.dropout_rate = 0.01
     config.seed = args.seed
+    config.filter_kw_segment = True
 
     # Set random seed
     torch.manual_seed(config.seed)
