@@ -1,5 +1,12 @@
 #!/usr/bin/env python
 # coding: utf-8
+from article_sentiment.data.dataset import SegmentedArticlesDataset, BERTDataset
+from article_sentiment.env import PROJECT_DIR
+from article_sentiment.kobert.pytorch_kobert import get_pytorch_kobert_model
+from article_sentiment.kobert.utils import get_tokenizer
+from article_sentiment.model import BERTClassifier
+from article_sentiment.utils import num_correct
+
 import argparse
 import logging
 import os
@@ -18,12 +25,6 @@ from transformers import get_linear_schedule_with_warmup
 import matplotlib.pyplot as plt
 plt.rcParams["font.family"] = 'NanumBarunGothic'
 
-from article_sentiment.data.dataset import SegmentedArticlesDataset, BERTDataset
-from article_sentiment.env import PROJECT_DIR
-from article_sentiment.kobert.pytorch_kobert import get_pytorch_kobert_model
-from article_sentiment.kobert.utils import get_tokenizer
-from article_sentiment.model import BERTClassifier
-from article_sentiment.utils import num_correct
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--device', help="`cpu` vs `gpu`", choices=['cpu', 'cuda'], default='cuda')
@@ -47,7 +48,7 @@ logger = logging.getLogger('train_bert.py')
 
 def train(model, device, train_loader, optimizer, scheduler, epoch, classes):
     correct = 0
-    cm = np.zeros((4, 4))
+    cm = np.zeros((len(classes), len(classes)))
     model.train()
     for batch_id, (token_ids, valid_length, segment_ids, label) in enumerate(tqdm(train_loader)):
         optimizer.zero_grad()
@@ -68,7 +69,7 @@ def train(model, device, train_loader, optimizer, scheduler, epoch, classes):
         scheduler.step()  # Update learning rate schedule
         correct += num_correct(out, label)
         pred = torch.max(out, 1)[1].data.cpu().numpy()
-        cm += confusion_matrix(label.data.cpu().numpy(), pred, labels=[0, 1, 2, 3])
+        cm += confusion_matrix(label.data.cpu().numpy(), pred, labels=list(range(len(classes))))
 
         accuracy = correct / (batch_id * train_loader.batch_size + len(label))
         if (batch_id + 1) % config.log_interval == 0:
@@ -100,7 +101,7 @@ def test(model, device, test_loader, classes, epoch=None, mode='val'):
     # example_images = []
 
     model.eval()
-    cm = np.zeros((4, 4))
+    cm = np.zeros((len(classes), len(classes)))
     val_loss = 0.0
     correct = 0.0
     with torch.no_grad():
@@ -114,7 +115,7 @@ def test(model, device, test_loader, classes, epoch=None, mode='val'):
             val_loss += nn.CrossEntropyLoss()(out, label).item()
             correct += num_correct(out, label)
             pred = torch.max(out, 1)[1].data.cpu().numpy()
-            cm += confusion_matrix(label.data.cpu().numpy(), pred, labels=[0, 1, 2, 3])
+            cm += confusion_matrix(label.data.cpu().numpy(), pred, labels=list(range(len(classes))))
 
     accuracy = 100. * correct / len(test_loader.dataset)
 

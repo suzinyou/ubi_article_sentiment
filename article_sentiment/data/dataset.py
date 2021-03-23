@@ -78,24 +78,16 @@ class BERTDataset(Dataset):
         self.labels = labels
 
     @classmethod
-    def create_from_dataset(cls, dataset, bert_tokenizer, max_doc_len, seg_len, shift,
-                 pad, pair):
-        cls.transform = nlp.data.BERTSentenceTransform(
+    def create_from_dataset(cls, dataset, bert_tokenizer, max_doc_len, pad, pair):
+        transform = nlp.data.BERTSentenceTransform(
             bert_tokenizer, max_seq_length=max_doc_len, pad=pad, pair=pair)
 
         article_segments = []
         labels = []
 
         for sample, label in dataset:
-            # todo: treat cases where pad, pair are reverse
-            input_token_ids, valid_length, input_token_types = cls.transform([sample])
-
-            ids = list(generate_overlapping_segments(input_token_ids, seg_len, shift))
-            val_len = generate_valid_lengths(valid_length, seg_len, shift)
-            types = list(generate_overlapping_segments(input_token_types, seg_len, shift))
-
-            article_segments.extend(list(zip(ids, val_len, types)))
-            labels.extend([label] * len(val_len))
+            article_segments.append(transform([sample]))
+            labels.append(np.int32(label))
 
         unique_labels = np.unique(labels)
         label_encoder = {l: j for j, l in enumerate(unique_labels)}
