@@ -161,17 +161,17 @@ if __name__ == '__main__':
             pass
     # config = wandb.config
     config = Config()
-    config.segment_len = 200
-    config.overlap = 50
+    # config.segment_len = 200
+    # config.overlap = 50
     config.batch_size = args.batch_size
     config.warmup_ratio = 0.1
     config.epochs = args.epochs
     config.max_grad_norm = 1
-    config.log_interval = 10
+    config.log_interval = 2
     config.learning_rate = 5e-5
     config.dropout_rate = 0.01
     config.seed = args.seed
-    config.filter_kw_segment = True
+    config.filter_kw_segment = False
 
     # Set random seed
     torch.manual_seed(config.seed)
@@ -183,39 +183,39 @@ if __name__ == '__main__':
     logger.info("Successfully loaded KoBERT.")
 
     # Load data ###############################################################################################
-    data_path = str(PROJECT_DIR / 'data' / 'processed' / 'labelled320_{}.csv')
+    # data_path = str(PROJECT_DIR / 'data' / 'processed' / 'labelled320_{}.csv')
+    data_path = str(PROJECT_DIR / 'data' / 'external' / 'ratings_{}.txt')
     logger.info(f"Loading data at {data_path}")
 
     if args.test_run:
-        n_train_discard = 119
-        n_val_discard = 39
-        n_test_discard = 39
+        n_train_discard = 148000
+        n_test_discard = 48000
     else:
         n_train_discard = n_val_discard = n_test_discard = 1
 
     dataset_train = nlp.data.TSVDataset(
-        data_path.format('train'), field_indices=[0, 1], num_discard_samples=n_train_discard)
-    dataset_val = nlp.data.TSVDataset(
-        data_path.format('val'), field_indices=[0, 1], num_discard_samples=n_val_discard)
+        data_path.format('train'), field_indices=[1, 2], num_discard_samples=n_train_discard)
+    # dataset_val = nlp.data.TSVDataset(
+    #     data_path.format('val'), field_indices=[0, 1], num_discard_samples=n_val_discard)
     dataset_test = nlp.data.TSVDataset(
-        data_path.format('test'), field_indices=[0, 1], num_discard_samples=n_test_discard)
+        data_path.format('test'), field_indices=[1, 2], num_discard_samples=n_test_discard)
 
     tokenizer = get_tokenizer()
     tok = nlp.data.BERTSPTokenizer(tokenizer, vocab, lower=False)
 
-    robert_data_train = SegmentedArticlesDataset(
-        dataset=dataset_train, bert_tokenizer=tok,
-        seg_len=config.segment_len, shift=config.overlap,
-        pad=True, pair=False, filter_kw_segment=config.filter_kw_segment)
-    robert_data_val = SegmentedArticlesDataset(
-        dataset=dataset_val, bert_tokenizer=tok,
-        seg_len=config.segment_len, shift=config.overlap,
-        pad=True, pair=False, filter_kw_segment=config.filter_kw_segment)
-    robert_data_test = SegmentedArticlesDataset(
-        dataset=dataset_test, bert_tokenizer=tok,
-        seg_len=config.segment_len, shift=config.overlap,
-        pad=True, pair=False, filter_kw_segment=config.filter_kw_segment)
-    logger.info("Successfully loaded data. Articles are segmented and tokenized.")
+    # robert_data_train = SegmentedArticlesDataset(
+    #     dataset=dataset_train, bert_tokenizer=tok,
+    #     seg_len=config.segment_len, shift=config.overlap,
+    #     pad=True, pair=False, filter_kw_segment=config.filter_kw_segment)
+    # robert_data_val = SegmentedArticlesDataset(
+    #     dataset=dataset_val, bert_tokenizer=tok,
+    #     seg_len=config.segment_len, shift=config.overlap,
+    #     pad=True, pair=False, filter_kw_segment=config.filter_kw_segment)
+    # robert_data_test = SegmentedArticlesDataset(
+    #     dataset=dataset_test, bert_tokenizer=tok,
+    #     seg_len=config.segment_len, shift=config.overlap,
+    #     pad=True, pair=False, filter_kw_segment=config.filter_kw_segment)
+    # logger.info("Successfully loaded data. Articles are segmented and tokenized.")
 
     # Set device #######################################################################################################
     logger.info(f"Set device to {args.device}")
@@ -229,16 +229,19 @@ if __name__ == '__main__':
     logger.info("Fine-tuning KoBERT on data!")
 
     # 1.1 Create DataLoader (1 sample = 1 segment)
-    data_train = BERTDataset.create_from_segmented(robert_data_train)
-    data_val = BERTDataset.create_from_segmented(robert_data_val)
-    data_test = BERTDataset.create_from_segmented(robert_data_test)
+    # data_train = BERTDataset.create_from_segmented(robert_data_train)
+    # data_val = BERTDataset.create_from_segmented(robert_data_val)
+    # data_test = BERTDataset.create_from_segmented(robert_data_test)
+    data_train = BERTDataset.create_from_dataset(dataset_train, tok, 64, pad=True, pair=False)
+    data_test = BERTDataset.create_from_dataset(dataset_test, tok, 64, pad=True, pair=False)
 
     train_dataloader = DataLoader(
         data_train, batch_size=config.batch_size,
         sampler=WeightedRandomSampler(data_train.sample_weight, len(data_train)),
         num_workers=num_workers)
-    val_dataloader = DataLoader(data_val, batch_size=config.batch_size, num_workers=num_workers)
-    test_dataloader = DataLoader(data_test, batch_size=config.batch_size, num_workers=num_workers)
+    # val_dataloader = DataLoader(data_val, batch_size=config.batch_size, num_workers=num_workers)
+    test_dataloader = DataLoader(
+        data_test, batch_size=config.batch_size, num_workers=num_workers)
     logger.info("Created data for KoBERT fine-tuning.")
 
     # 1.2 Set up classifier model.
@@ -283,14 +286,14 @@ if __name__ == '__main__':
 
     # 1.4 TRAIN!!!
     logger.info("Begin training")
-    wandb.watch(clf_model, log="all")
+    # wandb.watch(clf_model, log="all")
     for e in range(config.epochs):
         # 1.4.1 TRAIN
         logs = {}
         if args.mode in ('train', 'all'):
             train_logs = train(
                 clf_model, device, train_dataloader, optimizer, scheduler, epoch=e,
-                classes=robert_data_train.label_decoder)
+                classes=['pos', 'neg'])
             logs.update(train_logs)
             if args.device == 'cuda':
                 torch.cuda.empty_cache()
@@ -299,8 +302,8 @@ if __name__ == '__main__':
         # 1.4.2. Validate
         if args.mode in ('validate', 'all'):
             test_logs = test(
-                clf_model, device, val_dataloader,
-                classes=robert_data_val.label_decoder, epoch=e, mode='Validation'
+                clf_model, device, test_dataloader,
+                classes=['pos', 'neg'], epoch=e, mode='Validation'
             )
             logs.update(test_logs)
 
@@ -311,14 +314,14 @@ if __name__ == '__main__':
             if args.mode == 'validate':
                 break
 
-        wandb.log(logs)
+        # wandb.log(logs)
 
-    logger.info("Saving final BERTClassifier state dict...")
-    torch.save(clf_model.state_dict(), args.fine_tune_save)
-    wandb.save(str(args.fine_tune_save))
+    # logger.info("Saving final BERTClassifier state dict...")
+    # torch.save(clf_model.state_dict(), args.fine_tune_save)
+    # wandb.save(str(args.fine_tune_save))
 
     # Evaluate on test set
-    test(clf_model, device, test_dataloader, classes=robert_data_test.label_decoder, mode='Test')
+    test(clf_model, device, test_dataloader, classes=['pos', 'neg'], mode='Test')
 
     if args.device == 'cuda':
         torch.cuda.empty_cache()
