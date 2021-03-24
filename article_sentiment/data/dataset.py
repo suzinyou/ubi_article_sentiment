@@ -9,13 +9,15 @@ from article_sentiment.data.utils import (
 
 
 class SegmentedArticlesDataset(Dataset):
-    def __init__(self, dataset, bert_tokenizer, seg_len, shift,
+    def __init__(self, dataset, is_labeled, bert_tokenizer, seg_len, shift,
                  pad, pair, filter_kw_segment=False):
+        self.is_labeled = is_labeled
         self.transform = nlp.data.BERTSentenceTransform(
             bert_tokenizer, max_seq_length=seg_len+2, pad=pad, pair=pair)
 
         articles = []
-        labels = []
+        if is_labeled:
+            labels = []
 
         for sample, label in dataset:
             # todo: treat cases where pad, pair are reverse
@@ -50,25 +52,30 @@ class SegmentedArticlesDataset(Dataset):
                 valid_segments = segments
 
             articles.append([self.transform([segment]) for segment in valid_segments])
-            labels.append(label)
-
-        unique_labels = np.unique(labels)
-        label_encoder = {l: j for j, l in enumerate(unique_labels)}
+            if is_labeled:
+                labels.append(label)
 
         self.articles = articles
-        self.labels = [np.int32(label_encoder[l]) for l in labels]
-        self.label_encoder = label_encoder
-        self.label_decoder = []
-        for j in range(len(label_encoder)):
-            for k, v in label_encoder.items():
-                if v == j:
-                    self.label_decoder.append(k)
+        if is_labeled:
+            unique_labels = np.unique(labels)
+            label_encoder = {l: j for j, l in enumerate(unique_labels)}
+
+            self.labels = [np.int32(label_encoder[l]) for l in labels]
+            self.label_encoder = label_encoder
+            self.label_decoder = []
+            for j in range(len(label_encoder)):
+                for k, v in label_encoder.items():
+                    if v == j:
+                        self.label_decoder.append(k)
 
     def __getitem__(self, i):
-        return (self.articles[i], self.labels[i],)
+        if self.is_labeled:
+            return self.articles[i], self.labels[i]
+        else:
+            return self.articles[i]
 
     def __len__(self):
-        return (len(self.labels))
+        return len(self.articles)
 
 
 class BERTDataset(Dataset):
@@ -102,10 +109,16 @@ class BERTDataset(Dataset):
         segments = []
         labels = []
 
-        for article, label in articles_dataset:
-            for segment in article:
-                segments.append(segment)
-                labels.append(label)
+        for example in articles_dataset:
+            if len(example) == 2:
+                example, label = example
+
+                for segment in example:
+                    segments.append(segment)
+                    labels.append(label)
+            else:
+                for segment in example:
+                    segments.append(segment)
 
         return cls(segments, labels)
 
@@ -121,4 +134,4 @@ class BERTDataset(Dataset):
         return (self.segments[i] + (self.labels[i],))
 
     def __len__(self):
-        return (len(self.labels))
+        return (len(self.segments))
