@@ -80,47 +80,62 @@ class SegmentedArticlesDataset(Dataset):
 
 class BERTDataset(Dataset):
     # TODO: make this dataset use the result from SegmentedArticlesDataset
-    def __init__(self, segments, labels):
+    def __init__(self, segments, labels, is_labeled_mask):
         self.segments = segments
-        self.labels = labels
+        self.labels = np.asarray(labels)
+        self.is_labeled_mask = np.asarray(is_labeled_mask)
 
     @classmethod
-    def create_from_dataset(cls, dataset, bert_tokenizer, max_doc_len, pad, pair):
+    def create_from_dataset(cls, labeled_dataset, unlabeled_dataset, bert_tokenizer, max_doc_len, pad, pair):
         transform = nlp.data.BERTSentenceTransform(
             bert_tokenizer, max_seq_length=max_doc_len, pad=pad, pair=pair)
 
         article_segments = []
         labels = []
+        is_labeled_mask = []
 
-        for sample, label in dataset:
+        for sample, label in labeled_dataset:
             article_segments.append(transform([sample]))
             labels.append(np.int32(label))
+            is_labeled_mask.append(True)
+
+        if unlabeled_dataset is not None:
+            for sample, label in unlabeled_dataset:
+                article_segments.append(transform([sample]))
+                labels.append(np.int32(0))  # doesn't matter
+                is_labeled_mask.append(False)
 
         unique_labels = np.unique(labels)
         label_encoder = {l: j for j, l in enumerate(unique_labels)}
+        is_labeled_mask = np.asarray(is_labeled_mask)
 
         cls.label_encoder = label_encoder
-        return cls(article_segments, [np.int32(label_encoder[l]) for l in labels])
+        return cls(article_segments, [np.int32(label_encoder[l]) for l in labels], is_labeled_mask)
 
     @classmethod
-    def create_from_segmented(cls, articles_dataset):
+    def create_from_segmented(cls, labeled_articles_dataset, unlabeled_articles_dataset):
         """create instance of dataset with (segment, label) pairs, with multiple segments from the same article having
         the same label"""
+        assert isinstance(labeled_articles_dataset, SegmentedArticlesDataset)
+        assert isinstance(unlabeled_articles_dataset, SegmentedArticlesDataset)
         segments = []
         labels = []
+        is_labeled = []
 
-        for example in articles_dataset:
-            if len(example) == 2:
-                example, label = example
+        for example in labeled_articles_dataset:
+            for segment, label in example:
+                segments.append(segment)
+                labels.append(label)
+                is_labeled.append(True)
 
+        if unlabeled_articles_dataset is not None:
+            for example in unlabeled_articles_dataset:
                 for segment in example:
                     segments.append(segment)
-                    labels.append(label)
-            else:
-                for segment in example:
-                    segments.append(segment)
+                    labels.append(np.int32(0)) # doesn't matter
+                    is_labeled.append(False)
 
-        return cls(segments, labels)
+        return cls(segments, labels, is_labeled_mask=is_labeled)
 
     @property
     def sample_weight(self):
@@ -131,7 +146,7 @@ class BERTDataset(Dataset):
 
     def __getitem__(self, i):
         # TODO: make this compatible with base class
-        return (self.segments[i] + (self.labels[i],))
+        return self.segments[i] + (self.labels[i], self.is_labeled_mask[i])
 
     def __len__(self):
-        return (len(self.segments))
+        return len(self.segments)
