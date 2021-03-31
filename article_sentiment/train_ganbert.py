@@ -263,11 +263,13 @@ if __name__ == '__main__':
     logger.info('Starting train_ganbert.py...')
 
     # Check arg validity
-    # TODO: use wandb_run.id in save name
-    save_dir = Path(args.fine_tune_save).parent
-    if not os.path.isdir(save_dir):
-        raise ValueError(
-            f"Check the path in --fine_tune_save option. Directory does not exist: {save_dir}")
+    run_id = wandb.run.id
+    run_log_dir = LOG_DIR / run_id
+    run_log_dir.mkdir(exist_ok=True, parents=True)
+    # save_dir = Path(args.fine_tune_save).parent
+    # if not os.path.isdir(save_dir):
+    #     raise ValueError(
+    #         f"Check the path in --fine_tune_save option. Directory does not exist: {save_dir}")
 
     if args.warm_start:
         assert os.path.exists(args.fine_tune_save), f"no state dict saved to warm-start at {args.fine_tune_save}"
@@ -312,11 +314,11 @@ if __name__ == '__main__':
     logger.info(f"Loading data at {data_path}")
 
     if args.test_run:
-        n_train_discard = 160
-        n_val_discard = 80
-        n_test_discard = 80
+        n_train_discard = 160 - 16
+        n_val_discard = 80 - 16
+        n_test_discard = 80 - 16
         n_labeled_discard = n_train_discard + n_val_discard + n_test_discard
-        n_train_unlabeled_discard = 2071 - n_labeled_discard
+        n_train_unlabeled_discard = 2071 - n_labeled_discard - 16*2
     else:
         n_train_discard = n_train_unlabeled_discard = n_val_discard = n_test_discard = 1
 
@@ -484,18 +486,19 @@ if __name__ == '__main__':
         if not args.wandb_off:
             wandb.log(logs)
 
-    logger.info("Saving final state dicts...")
-    torch.save({
-        'bert': model_bert.state_dict(),
-        'discriminator': model_D.state_dict(),
-        'generator': model_G.state_dict()
-    }, args.fine_tune_save)  # TODO: use different checkpoint names for each epoch?
-    torch.save({
-        'bert-discriminator': optimizer_D.state_dict(),
-        'generator': optimizer_G.state_dict()
-    }, str(args.fine_tune_save).split('.')[0] + '_optimizer.dict')
-    if not args.wandb_off:
-        wandb.save(str(args.fine_tune_save))
+        logger.info(f"Epoch {e:02d}: Saving state dicts...")
+        torch.save({
+            'bert': model_bert.state_dict(),
+            'discriminator': model_D.state_dict(),
+            'generator': model_G.state_dict()
+        }, run_log_dir / f'models-{e:04d}.dict')  # TODO: use different checkpoint names for each epoch?
+        torch.save({
+            'bert-discriminator': optimizer_D.state_dict(),
+            'generator': optimizer_G.state_dict()
+        }, run_log_dir / f'optimizers-{e:04d}.dict')
+        if not args.wandb_off:
+            wandb.save(str(run_log_dir / f'models-{e:04d}.dict'))
+            wandb.save(str(run_log_dir / f'optimizers-{e:04d}.dict'))
 
     # Evaluate on test set
     run(model_bert, model_D, model_G, device, test_dataloader,
