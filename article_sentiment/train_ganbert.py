@@ -177,7 +177,7 @@ def run(bert,
     # tb.add_histogram('generator.main[-1].weight', generator.main[-1].weight, epoch)
     # tb.add_histogram('generator.main[-1].weight.grad', generator.main[-1].weight.grad, epoch)
 
-    return {
+    wandb.log({
         # "Examples": example_images,
         f" Accuracy ({mode})": accuracy,
         f" Loss_D ({mode})": loss_d_total,
@@ -185,7 +185,7 @@ def run(bert,
         f" Confusion Matrix ({mode})": ConfusionMatrixDisplay(
             confusion_matrix=cm, display_labels=classes
         ).plot().figure_
-    }
+    })
 
 
 # def test(bert, discriminator, generator, device, test_loader, classes, epoch=None, mode='val'):
@@ -451,9 +451,8 @@ if __name__ == '__main__':
     # 1.4 TRAIN!!!
     logger.info("Begin training")
     if not args.wandb_off:
-        wandb.watch(model_D, log="all")
-        wandb.watch(model_G, log="all")
-
+        wandb.watch(model_D, log="all", log_freq=1)
+        wandb.watch(model_G, log="all", log_freq=1)
     # tb_writer.add_graph(model_bert)
     # tb_writer.add_graph(model_D)
     # tb_writer.add_graph(model_G)
@@ -462,22 +461,20 @@ if __name__ == '__main__':
         # 1.4.1 TRAIN
         logs = {}
         if args.mode in ('train', 'all'):
-            train_logs = run(
+            run(
                 model_bert, model_D, model_G, device, train_dataloader,
                 optimizer_g=optimizer_G, optimizer_d=optimizer_D, scheduler=scheduler_D,
                 epoch=e, classes=label_encoder.classes_, mode='train')
-            logs.update(train_logs)
             if args.device == 'cuda':
                 torch.cuda.empty_cache()
                 logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
 
         # 1.4.2. Validate
         if args.mode in ('validate', 'all'):
-            val_logs = run(
+            run(
                 model_bert, model_D, model_G, device, val_dataloader,
                 classes=label_encoder.classes_, epoch=e, mode='validation'
             )
-            logs.update(val_logs)
 
             if args.device == 'cuda':
                 torch.cuda.empty_cache()
@@ -485,9 +482,6 @@ if __name__ == '__main__':
 
             if args.mode == 'validate':
                 break
-
-        if not args.wandb_off:
-            wandb.log(logs)
 
         logger.info(f"Epoch {e:02d}: Saving state dicts...")
         torch.save({
