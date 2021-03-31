@@ -183,7 +183,7 @@ if __name__ == '__main__':
     logger.info("Successfully loaded KoBERT.")
 
     # Load data ###############################################################################################
-    data_path = str(PROJECT_DIR / 'data' / 'processed' / 'labelled320_{}.csv')
+    data_path = str(PROJECT_DIR / 'data' / 'processed' / 'ganbert' / '{}.csv')
     logger.info(f"Loading data at {data_path}")
 
     if args.test_run:

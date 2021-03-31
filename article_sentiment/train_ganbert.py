@@ -104,14 +104,17 @@ def run(bert, discriminator, generator, device, data_loader, classes, mode,
 
         # pass noise thru generator
         # TODO: pass config as param for this function?
-        z = torch.rand((config.batch_size, config.dim_latent_z))
-        x_g = model_G(z)
+        z = torch.rand((config.batch_size, config.dim_latent_z)).to(device)
+        x_g = generator(z)
         D_fake_features, D_fake_logits, D_fake_probs = discriminator(x_g)
 
         # Loss
-        loss_d, clf_probs = LossDiscriminator(is_training=True)(
-            D_real_logits, D_real_probs, D_fake_probs, label, is_labeled_mask)
-        loss_g = LossGenerator()(D_fake_probs, D_fake_features, D_fake_features)
+        loss_d, clf_probs = LossDiscriminator(
+            num_classes=len(classes), is_training=mode == 'train'
+        )(
+            D_real_logits, D_real_probs, D_fake_probs.detach(), label, is_labeled_mask)
+        loss_g = LossGenerator()(
+            D_fake_probs, D_fake_features, D_real_features.detach())
 
         if mode == 'train':
             # Backprop
@@ -119,16 +122,15 @@ def run(bert, discriminator, generator, device, data_loader, classes, mode,
             # TODO: clip grad norms only for bert??
             torch.nn.utils.clip_grad_norm_(model_bert.parameters(), config.max_grad_norm)
             optimizer_d.step()
+            # TODO: when to do scheduler.step()?
+            scheduler.step()  # Update learning rate schedule
 
             loss_g.backward()
             optimizer_g.step()
 
-            # TODO: when to do scheduler.step()?
-            scheduler.step()  # Update learning rate schedule
-
         # Evaluate
         eval_probs = clf_probs[is_labeled_mask]
-        correct += num_correct(eval_probs, label)  # TODO: check if per_ex_lossis
+        correct += num_correct(eval_probs, label[is_labeled_mask])  # TODO: check if per_ex_lossis
         pred = torch.max(eval_probs, 1)[1].data.cpu().numpy()
         cm += confusion_matrix(
             label[is_labeled_mask].data.cpu().numpy(), pred, labels=list(range(len(classes))))
@@ -137,7 +139,7 @@ def run(bert, discriminator, generator, device, data_loader, classes, mode,
         if (batch_id + 1) % config.log_interval == 0:
             logger.info(
                 f"epoch {epoch + 1:2d} batch id {batch_id + 1:3d} "
-                f"loss_d {loss_d.data.cpu().numpy():5f} loss_g {loss_g.data.cpu().numpy():.5f} train acc {accuracy:.5f}")
+                f"loss_d {loss_d.data.cpu().numpy()[0]:5f} loss_g {loss_g.data.cpu().numpy():.5f} train acc {accuracy:.5f}")
             logger.info(
                 "Confusion matrix\n" +
                 "True\\Pred " + ' '.join([f"{cat:>10}" for cat in classes]) + "\n" +
@@ -291,10 +293,11 @@ if __name__ == '__main__':
     logger.info(f"Loading data at {data_path}")
 
     if args.test_run:
-        n_train_discard = 160 - 2
-        n_train_unlabeled_discard = 2071 - 2
-        n_val_discard = 80 - 2
-        n_test_discard = 80 - 2
+        n_train_discard = 160
+        n_val_discard = 80
+        n_test_discard = 80
+        n_labeled_discard = n_train_discard + n_val_discard + n_test_discard
+        n_train_unlabeled_discard = 2071 - n_labeled_discard
     else:
         n_train_discard = n_train_unlabeled_discard = n_val_discard = n_test_discard = 1
 
