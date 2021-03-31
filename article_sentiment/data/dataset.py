@@ -80,8 +80,8 @@ class SegmentedArticlesDataset(Dataset):
 
 class BERTDataset(Dataset):
     # TODO: make this dataset use the result from SegmentedArticlesDataset
-    def __init__(self, segments, labels, is_labeled_mask):
-        self.segments = segments
+    def __init__(self, bert_inputs, labels, is_labeled_mask):
+        self.bert_inputs = bert_inputs
         self.labels = np.asarray(labels)
         self.is_labeled_mask = np.asarray(is_labeled_mask)
 
@@ -117,25 +117,28 @@ class BERTDataset(Dataset):
         """create instance of dataset with (segment, label) pairs, with multiple segments from the same article having
         the same label"""
         assert isinstance(labeled_articles_dataset, SegmentedArticlesDataset)
-        assert isinstance(unlabeled_articles_dataset, SegmentedArticlesDataset)
-        segments = []
+        assert unlabeled_articles_dataset is None or isinstance(unlabeled_articles_dataset, SegmentedArticlesDataset)
+        bert_inputs = []
         labels = []
         is_labeled = []
 
         for example in labeled_articles_dataset:
-            for segment, label in example:
-                segments.append(segment)
-                labels.append(label)
-                is_labeled.append(True)
+            list_of_segs, label = example
+            n_segs = len(list_of_segs)
+            for seg_bert_input in list_of_segs:
+                bert_inputs.append(seg_bert_input)
+            labels.extend([label] * n_segs)
+            is_labeled.extend([True] * n_segs)
 
         if unlabeled_articles_dataset is not None:
-            for example in unlabeled_articles_dataset:
-                for segment in example:
-                    segments.append(segment)
-                    labels.append(np.int32(0)) # doesn't matter
-                    is_labeled.append(False)
+            for list_of_segs in unlabeled_articles_dataset: # there is no label
+                n_segs = len(list_of_segs)
+                for seg_bert_input in list_of_segs:
+                    bert_inputs.append(seg_bert_input)
+                labels.extend([np.int32(0)] * n_segs)  # placeholders
+                is_labeled.extend([False] * n_segs)
 
-        return cls(segments, labels, is_labeled_mask=is_labeled)
+        return cls(bert_inputs, labels, is_labeled_mask=is_labeled)
 
     @property
     def sample_weight(self):
@@ -146,7 +149,7 @@ class BERTDataset(Dataset):
 
     def __getitem__(self, i):
         # TODO: make this compatible with base class
-        return self.segments[i] + (self.labels[i], self.is_labeled_mask[i])
+        return self.bert_inputs[i] + (self.labels[i], self.is_labeled_mask[i])
 
     def __len__(self):
-        return len(self.segments)
+        return len(self.bert_inputs)
