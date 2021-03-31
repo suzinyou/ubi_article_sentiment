@@ -19,7 +19,6 @@ import torch
 import wandb
 from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
 from torch.utils.data import DataLoader, WeightedRandomSampler
-from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from transformers import AdamW
 from transformers import get_linear_schedule_with_warmup
@@ -95,7 +94,6 @@ def run(bert,
 
         token_ids = token_ids.long().to(device)
         segment_ids = segment_ids.long().to(device)
-        valid_length = valid_length
         label = label.long().to(device)
 
         if mode == 'train':
@@ -319,7 +317,7 @@ if __name__ == '__main__':
 
     # Load KoBERT ###############################################################################################
     logger.info("Loading KoBERT...")
-    model_bert, vocab = get_pytorch_kobert_model()
+    model_bert, vocab = get_pytorch_kobert_model(ctx=args.device)
     logger.info("Successfully loaded KoBERT.")
 
     # Load data ###############################################################################################
@@ -473,7 +471,7 @@ if __name__ == '__main__':
         logs = {}
         if args.mode in ('train', 'all'):
             run(
-                model_bert, model_D, model_G, device, train_dataloader,
+                model_bert, model_D, model_G, device=device, data_loader=train_dataloader,
                 optimizer_g=optimizer_G, optimizer_d=optimizer_D, scheduler=scheduler_D,
                 epoch=e, classes=label_encoder.classes_, mode='train')
             if args.device == 'cuda':
