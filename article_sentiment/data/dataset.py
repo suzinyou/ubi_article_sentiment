@@ -10,7 +10,7 @@ from article_sentiment.data.utils import (
 
 class SegmentedArticlesDataset(Dataset):
     def __init__(self, dataset, is_labeled, bert_tokenizer, seg_len, shift,
-                 pad, pair, filter_kw_segment=False):
+                 pad, pair, filter_kw_segment=False, label_encoder=None):
         self.is_labeled = is_labeled
         self.transform = nlp.data.BERTSentenceTransform(
             bert_tokenizer, max_seq_length=seg_len+2, pad=pad, pair=pair)
@@ -57,16 +57,15 @@ class SegmentedArticlesDataset(Dataset):
 
         self.articles = articles
         if is_labeled:
-            unique_labels = np.unique(labels)
-            label_encoder = {l: j for j, l in enumerate(unique_labels)}
+            if label_encoder is not None:
+                self.labels = label_encoder.transform(labels)
+                self.label_encoder = label_encoder
+            else:
+                unique_labels = np.unique(labels)
+                label_encoder = {l: j for j, l in enumerate(unique_labels)}
 
-            self.labels = [np.int32(label_encoder[l]) for l in labels]
-            self.label_encoder = label_encoder
-            self.label_decoder = []
-            for j in range(len(label_encoder)):
-                for k, v in label_encoder.items():
-                    if v == j:
-                        self.label_decoder.append(k)
+                self.labels = [np.int32(label_encoder[l]) for l in labels]
+                self.label_encoder = label_encoder
 
     def __getitem__(self, i):
         if self.is_labeled:
@@ -105,12 +104,10 @@ class BERTDataset(Dataset):
                 labels.append(np.int32(0))  # doesn't matter
                 is_labeled_mask.append(False)
 
-        unique_labels = np.unique(labels)
-        label_encoder = {l: j for j, l in enumerate(unique_labels)}
         is_labeled_mask = np.asarray(is_labeled_mask)
 
-        cls.label_encoder = label_encoder
-        return cls(article_segments, [np.int32(label_encoder[l]) for l in labels], is_labeled_mask)
+        cls.label_encoder = labeled_dataset.label_encoder
+        return cls(article_segments, labels, is_labeled_mask)
 
     @classmethod
     def create_from_segmented(cls, labeled_articles_dataset, unlabeled_articles_dataset):

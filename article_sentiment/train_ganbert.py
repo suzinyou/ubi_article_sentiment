@@ -11,19 +11,18 @@ from article_sentiment.utils import num_correct
 import argparse
 import logging
 import os
-from pathlib import Path
 
 import gluonnlp as nlp
 import numpy as np
 import torch
 import wandb
 from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
-from torch import nn
-from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
+from torch.utils.data import DataLoader, WeightedRandomSampler
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from transformers import AdamW
 from transformers import get_linear_schedule_with_warmup
+from sklearn.preprocessing import LabelEncoder
 import matplotlib.pyplot as plt
 plt.rcParams["font.family"] = 'NanumBarunGothic'
 
@@ -332,26 +331,30 @@ if __name__ == '__main__':
     test_examples = nlp.data.TSVDataset(
         data_path.format('test_labeled'), field_indices=[0, 1], num_discard_samples=n_val_discard)
 
+    label_encoder = LabelEncoder()
+    label_encoder.fit(['긍정', '부정', '중립', '무관'])
+
     # Load tokenizer
     tokenizer = get_tokenizer()
     tok = nlp.data.BERTSPTokenizer(tokenizer, vocab, lower=False)
 
     # Segment articles into pre-defined segment lengths.
+    # TODO: don't save tokenizer..
     train_labeled_articles = SegmentedArticlesDataset(
-        dataset=labeled_examples, is_labeled=True, bert_tokenizer=tok,
-        seg_len=config.segment_len, shift=config.overlap,
+        dataset=labeled_examples, is_labeled=True, label_encoder=label_encoder,
+        bert_tokenizer=tok, seg_len=config.segment_len, shift=config.overlap,
         pad=True, pair=False, filter_kw_segment=config.filter_kw_segment)
     train_unlabeled_articles = SegmentedArticlesDataset(
-        dataset=unlabeled_examples, is_labeled=False, bert_tokenizer=tok,
-        seg_len=config.segment_len, shift=config.overlap,
+        dataset=unlabeled_examples, is_labeled=False,
+        bert_tokenizer=tok, seg_len=config.segment_len, shift=config.overlap,
         pad=True, pair=False, filter_kw_segment=config.filter_kw_segment)
     val_articles = SegmentedArticlesDataset(
-        dataset=val_examples, is_labeled=True, bert_tokenizer=tok,
-        seg_len=config.segment_len, shift=config.overlap,
+        dataset=val_examples, is_labeled=True,  label_encoder=label_encoder,
+        bert_tokenizer=tok, seg_len=config.segment_len, shift=config.overlap,
         pad=True, pair=False, filter_kw_segment=config.filter_kw_segment)
     test_articles = SegmentedArticlesDataset(
-        dataset=test_examples, is_labeled=True, bert_tokenizer=tok,
-        seg_len=config.segment_len, shift=config.overlap,
+        dataset=test_examples, is_labeled=True,  label_encoder=label_encoder,
+        bert_tokenizer=tok, seg_len=config.segment_len, shift=config.overlap,
         pad=True, pair=False, filter_kw_segment=config.filter_kw_segment)
 
     # Create BERTDataset - gives tuple
@@ -462,7 +465,7 @@ if __name__ == '__main__':
             train_logs = run(
                 model_bert, model_D, model_G, device, train_dataloader,
                 optimizer_g=optimizer_G, optimizer_d=optimizer_D, scheduler=scheduler_D,
-                epoch=e, classes=train_labeled_articles.label_decoder, mode='train')
+                epoch=e, classes=label_encoder.classes_, mode='train')
             logs.update(train_logs)
             if args.device == 'cuda':
                 torch.cuda.empty_cache()
@@ -472,7 +475,7 @@ if __name__ == '__main__':
         if args.mode in ('validate', 'all'):
             val_logs = run(
                 model_bert, model_D, model_G, device, val_dataloader,
-                classes=val_articles.label_decoder, epoch=e, mode='validation'
+                classes=label_encoder.classes_, epoch=e, mode='validation'
             )
             logs.update(val_logs)
 
@@ -502,7 +505,7 @@ if __name__ == '__main__':
 
     # Evaluate on test set
     run(model_bert, model_D, model_G, device, test_dataloader,
-        classes=test_articles.label_decoder, mode='test')
+        classes=label_encoder.classes_, mode='test')
 
     if args.device == 'cuda':
         torch.cuda.empty_cache()
