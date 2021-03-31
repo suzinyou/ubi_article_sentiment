@@ -11,6 +11,7 @@ from article_sentiment.utils import num_correct
 import argparse
 import logging
 import os
+from datetime import datetime
 
 import gluonnlp as nlp
 import numpy as np
@@ -52,9 +53,20 @@ def run(bert,
         discriminator, generator,
         # discriminator_loss, generator_loss,
         device, data_loader, classes, mode,
-        optimizer_d=None, optimizer_g=None, scheduler=None, epoch=None):
+        optimizer_d=None, optimizer_g=None, scheduler=None, epoch=None, tb=None):
     """
-    :param optimizer_d: required if mode == 'train
+    :param bert: BERT nn.module
+    :param discriminator: Discriminator nn.module
+    :param generator: Generator nn.module
+    :param device: 'cpu' or 'gpu'
+    :param data_loader: DataLoader
+    :param classes: list of classes reflecting label encoding
+    :param mode: 'train', 'validation' or 'test
+    :param optimizer_d: optimizer for discriminator loss required if mode == 'train'
+    :param optimizer_g: optimizer for generator loss, required if mode == 'train'
+    :param scheduler: scheduler for discriminator, required if mode == 'train'
+    :param epoch: int or None, required if mode == 'train'
+    :param tb: tensorboard SummaryWriter instance, optional
     """
     assert mode in ('train', 'validation', 'test', 'predict')
     if mode == 'train':
@@ -97,7 +109,7 @@ def run(bert,
         attention_mask = attention_mask.float().to(device)
 
         # get BERT output
-        _, pooler = model_bert(
+        _, pooler = bert(
             input_ids=token_ids,
             token_type_ids=segment_ids,
             attention_mask=attention_mask
@@ -113,11 +125,10 @@ def run(bert,
         D_fake_features, D_fake_logits, D_fake_probs = discriminator(x_g)
 
         # Loss
-        loss_d, clf_probs = LossDiscriminator(
-            num_classes=len(classes), is_training=mode == 'train'
-        )(D_real_logits, D_real_probs, D_fake_probs.detach(), label, is_labeled_mask)
-        loss_g = LossGenerator()(
-            D_fake_probs, D_fake_features, D_real_features.detach())
+        L_D = LossDiscriminator(num_classes=len(classes), is_training=mode == 'train')
+        L_G = LossGenerator()
+        loss_d, clf_probs = L_D(D_real_logits, D_real_probs, D_fake_probs.detach(), label, is_labeled_mask)
+        loss_g = L_G(D_fake_probs, D_fake_features, D_real_features.detach())
 
         loss_d_total += loss_d.data.cpu().numpy()
         loss_g_total += loss_g.data.cpu().numpy()
@@ -262,7 +273,10 @@ if __name__ == '__main__':
     logger.info('Starting train_ganbert.py...')
 
     # Check arg validity
-    run_id = wandb.run.id
+    if args.wandb_off:
+        run_id = 'test_run-' + datetime.now().strftime("%y%m%d_%H%M%S")
+    else:
+        run_id = wandb.run.id
     run_log_dir = LOG_DIR / run_id
     run_log_dir.mkdir(exist_ok=True, parents=True)
     # save_dir = Path(args.fine_tune_save).parent
@@ -453,9 +467,6 @@ if __name__ == '__main__':
     if not args.wandb_off:
         wandb.watch(model_D, log="all", log_freq=1)
         wandb.watch(model_G, log="all", log_freq=1)
-    # tb_writer.add_graph(model_bert)
-    # tb_writer.add_graph(model_D)
-    # tb_writer.add_graph(model_G)
 
     for e in range(config.epochs):
         # 1.4.1 TRAIN
