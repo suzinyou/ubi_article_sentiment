@@ -158,7 +158,7 @@ def run(bert,
         if (batch_id + 1) % config.log_interval == 0:
             logger.info(
                 f"epoch {epoch + 1:2d} batch id {batch_id + 1:3d} "
-                f"loss_d {loss_d.data.cpu().numpy()[0]:5f} loss_g {loss_g.data.cpu().numpy():.5f} train acc {accuracy:.5f}")
+                f"loss_d {loss_d.data.cpu().numpy()} loss_g {loss_g.data.cpu().numpy()} train acc {accuracy:.5f}")
             logger.info(
                 "Confusion matrix\n" +
                 "True\\Pred " + ' '.join([f"{cat:>10}" for cat in classes]) + "\n" +

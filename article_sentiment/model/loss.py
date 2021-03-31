@@ -15,14 +15,14 @@ class LossDiscriminator(nn.Module):
         self.epsilon = epsilon
 
         self.num_classes = num_classes
-        self.device=device
+        self.device = device
 
     def forward(self, logits_d_sup, probs_d_sup, probs_g, labels, is_labeled_mask):
         """
         :returns: (loss_d, probabilities) where probabilities is the classification prob.
         """
         # loss_d_supervised
-        logits_real = logits_d_sup[:, 1:]  # Assuming the first column is for the 'fake' class
+        logits_real = logits_d_sup[:, :-1]  # Assuming the first column is for the 'fake' class
         probabilities = self.softmax_clf_real(logits_real)
         log_probabilities = self.log_softmax_clf_real(logits_real)
 
@@ -41,11 +41,11 @@ class LossDiscriminator(nn.Module):
             loss_d_supervised = torch.mean(per_example_loss)
 
         # loss_d_unsupervised_real
-        loss_d_unsupervised_real = -torch.mean(torch.log(1 - probs_d_sup[:, 0] + self.epsilon))
+        loss_d_unsupervised_real = -torch.mean(torch.log(1 - probs_d_sup[:, -1] + self.epsilon))
         # Assuming the first column is for the 'fake' class
 
         # loss_d_unsupervised_fake
-        loss_d_unsupervised_fake = -torch.mean(torch.log(probs_g[:, 0] + self.epsilon))
+        loss_d_unsupervised_fake = -torch.mean(torch.log(probs_g[:, -1] + self.epsilon))
 
         loss_d = loss_d_supervised + loss_d_unsupervised_real + loss_d_unsupervised_fake
         return loss_d, probabilities
@@ -58,7 +58,7 @@ class LossGenerator(nn.Module):
 
     def forward(self, probs_g, features_g, features_d):
         # loss_g_fake
-        loss_g_fake = -torch.mean(torch.log(1 - probs_g[:, 0] + self.epsilon))
+        loss_g_fake = -torch.mean(torch.log(1 - probs_g[:, -1] + self.epsilon))
         # Assuming the first column is for the 'fake' class
 
         # loss_g_feature_match
