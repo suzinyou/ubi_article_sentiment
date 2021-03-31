@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 from article_sentiment.data.dataset import SegmentedArticlesDataset, BERTDataset
-from article_sentiment.env import PROJECT_DIR
+from article_sentiment.env import PROJECT_DIR, LOG_DIR
 from article_sentiment.kobert.pytorch_kobert import get_pytorch_kobert_model
 from article_sentiment.kobert.utils import get_tokenizer
 from article_sentiment.model import Discriminator, Generator
@@ -20,6 +20,7 @@ import wandb
 from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
 from torch import nn
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
+from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from transformers import AdamW
 from transformers import get_linear_schedule_with_warmup
@@ -39,6 +40,7 @@ parser.add_argument('-m', '--mode', help="train mode? val mode? all(both)?", cho
                     default='all')
 parser.add_argument('-b', '--batch_size', default=16, type=int)
 parser.add_argument('-e', '--epochs', default=3, type=int)
+parser.add_argument('--wandb_off', help="turn off wandb", action='store_true')
 args = parser.parse_args()
 
 logging.basicConfig(
@@ -230,11 +232,17 @@ def run(bert, discriminator, generator, device, data_loader, classes, mode,
 
 
 if __name__ == '__main__':
-    wandb.init(project="ubi_article_sentiment-GANBERT")
+    if not args.wandb_off:
+        wandb_run = wandb.init(
+            project="ubi_article_sentiment-GANBERT",
+            dir=LOG_DIR,
+            name='First code run-through',)
+    # tb_writer = SummaryWriter(LOG_DIR / 'tensorboard')
 
     logger.info('Starting train_ganbert.py...')
 
     # Check arg validity
+    # TODO: use wandb_run.id in save name
     save_dir = Path(args.fine_tune_save).parent
     if not os.path.isdir(save_dir):
         raise ValueError(
@@ -249,11 +257,13 @@ if __name__ == '__main__':
     num_workers = os.cpu_count()
     input_size = 768
 
-    # class Config(object):
-    #     def __init__(self):
-    #         pass
-    # config = Config()
-    config = wandb.config
+    if args.wandb_off:
+        class Config(object):
+            def __init__(self):
+                pass
+        config = Config()
+    else:
+        config = wandb.config
     config.segment_len = 200
     config.overlap = 50
     config.batch_size = args.batch_size
@@ -379,7 +389,6 @@ if __name__ == '__main__':
 
     # 1.3 Set up training parameters
     #       Prepare optimizer and schedule (linear warmup and decay)
-    loss_fn = nn.CrossEntropyLoss()
 
     if args.mode in ('train', 'all'):
         no_decay = ['bias', 'LayerNorm.weight']
@@ -414,8 +423,9 @@ if __name__ == '__main__':
 
     # 1.4 TRAIN!!!
     logger.info("Begin training")
-    wandb.watch(model_D, log="all")
-    wandb.watch(model_G, log="all")
+    if not args.wandb_off:
+        wandb.watch(model_D, log="all")
+        wandb.watch(model_G, log="all")
 
     for e in range(config.epochs):
         # 1.4.1 TRAIN
@@ -445,7 +455,8 @@ if __name__ == '__main__':
             if args.mode == 'validate':
                 break
 
-        wandb.log(logs)
+        if not args.wandb_off:
+            wandb.log(logs)
 
     logger.info("Saving final state dicts...")
     torch.save({
@@ -457,7 +468,8 @@ if __name__ == '__main__':
         'bert-discriminator': optimizer_D.state_dict(),
         'generator': optimizer_G.state_dict()
     }, str(args.fine_tune_save).split('.')[0] + '_optimizer.dict')
-    wandb.save(str(args.fine_tune_save))
+    if not args.wandb_off:
+        wandb.save(str(args.fine_tune_save))
 
     # Evaluate on test set
     run(model_bert, model_D, model_G, device, test_dataloader,
