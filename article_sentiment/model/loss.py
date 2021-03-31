@@ -34,7 +34,7 @@ class LossDiscriminator(nn.Module):
             labeled_count = per_example_loss.size()
             loss_d_supervised = torch.div(
                 torch.sum(per_example_loss),
-                torch.max(torch.tensor(labeled_count), torch.tensor(1, device=self.device))
+                torch.max(torch.tensor(labeled_count, device=self.device), torch.tensor(1, device=self.device))
             )
         else:
             per_example_loss = -torch.sum(one_hot_labels * log_probabilities, -1)

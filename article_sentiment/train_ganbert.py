@@ -95,6 +95,7 @@ def run(bert,
         token_ids = token_ids.long().to(device)
         segment_ids = segment_ids.long().to(device)
         label = label.long().to(device)
+        is_labeled_mask = is_labeled_mask.to(device)
 
         if mode == 'train':
             optimizer_d.zero_grad()  # TODO: call zero_grad on optimizer or model?
@@ -151,7 +152,7 @@ def run(bert,
         correct += num_correct(eval_probs, label[is_labeled_mask])  # TODO: check if per_ex_lossis
         pred = torch.max(eval_probs, 1)[1].data.cpu().numpy()
         cm += confusion_matrix(
-            label[is_labeled_mask], pred, labels=list(range(len(classes))))
+            label[is_labeled_mask].data.cpu().numpy(), pred, labels=list(range(len(classes))))
         accuracy = correct / (batch_id * data_loader.batch_size + is_labeled_mask.sum().data.cpu().numpy())
 
         if (batch_id + 1) % config.log_interval == 0:
@@ -165,17 +166,6 @@ def run(bert,
                     [f"{cat:>10} " + ' '.join([f"{int(cnt):10d}" for cnt in row]) for cat, row in zip(classes, cm)])
             )
 
-        if (batch_id + 1) % config.log_interval * 10 == 0:
-            # for model in (bertmodel, discriminator, generator):
-            torch.save({
-                'bert': bert.state_dict(),
-                'discriminator': discriminator.state_dict(),
-                'generator': generator.state_dict()
-            }, args.fine_tune_save)
-            torch.save({
-                'bert-discriminator': optimizer_d.state_dict(),
-                'generator': optimizer_g.state_dict()
-            }, str(args.fine_tune_save).split('.')[0] + '_optimizer.dict')
 
     accuracy = correct / len(data_loader.dataset)
     # tb.add_scalar('Loss_D', loss_d_total, epoch)
@@ -188,16 +178,16 @@ def run(bert,
     # tb.add_histogram('generator.main[-1].bias', generator.main[-1].bias, epoch)
     # tb.add_histogram('generator.main[-1].weight', generator.main[-1].weight, epoch)
     # tb.add_histogram('generator.main[-1].weight.grad', generator.main[-1].weight.grad, epoch)
-
-    wandb.log({
-        # "Examples": example_images,
-        f" Accuracy ({mode})": accuracy,
-        f" Loss_D ({mode})": loss_d_total,
-        f" Loss_G ({mode})": loss_g_total,
-        f" Confusion Matrix ({mode})": ConfusionMatrixDisplay(
-            confusion_matrix=cm, display_labels=classes
-        ).plot().figure_
-    })
+    if not args.wandb_off:
+        wandb.log({
+            # "Examples": example_images,
+            f" Accuracy ({mode})": accuracy,
+            f" Loss_D ({mode})": loss_d_total,
+            f" Loss_G ({mode})": loss_g_total,
+            f" Confusion Matrix ({mode})": ConfusionMatrixDisplay(
+                confusion_matrix=cm, display_labels=classes
+            ).plot().figure_
+        })
 
 
 # def test(bert, discriminator, generator, device, test_loader, classes, epoch=None, mode='val'):
