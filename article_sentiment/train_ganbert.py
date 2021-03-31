@@ -123,7 +123,10 @@ def run(bert,
         D_fake_features, D_fake_logits, D_fake_probs = discriminator(x_g)
 
         # Loss
-        L_D = LossDiscriminator(num_classes=len(classes), is_training=mode == 'train')
+        L_D = LossDiscriminator(
+            num_classes=len(classes),
+            is_training=mode == 'train',
+            device=device)
         L_G = LossGenerator()
         loss_d, clf_probs = L_D(D_real_logits, D_real_probs, D_fake_probs.detach(), label, is_labeled_mask)
         loss_g = L_G(D_fake_probs, D_fake_features, D_real_features.detach())

@@ -3,7 +3,7 @@ from torch import nn
 
 
 class LossDiscriminator(nn.Module):
-    def __init__(self, num_classes, is_training=True, epsilon=1e-8):
+    def __init__(self, num_classes, is_training=True, epsilon=1e-8, device='cpu'):
         super(LossDiscriminator, self).__init__()
         self.softmax_clf_real = nn.Softmax(dim=1)
         self.log_softmax_clf_real = nn.LogSoftmax(dim=1)
@@ -15,6 +15,7 @@ class LossDiscriminator(nn.Module):
         self.epsilon = epsilon
 
         self.num_classes = num_classes
+        self.device=device
 
     def forward(self, logits_d_sup, probs_d_sup, probs_g, labels, is_labeled_mask):
         """
@@ -33,7 +34,7 @@ class LossDiscriminator(nn.Module):
             labeled_count = per_example_loss.size()
             loss_d_supervised = torch.div(
                 torch.sum(per_example_loss),
-                torch.max(torch.tensor(labeled_count), torch.tensor(1))
+                torch.max(torch.tensor(labeled_count), torch.tensor(1, device=self.device))
             )
         else:
             per_example_loss = -torch.sum(one_hot_labels * log_probabilities, -1)
