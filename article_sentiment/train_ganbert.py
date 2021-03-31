@@ -49,7 +49,10 @@ logging.basicConfig(
 logger = logging.getLogger('train_bert.py')
 
 
-def run(bert, discriminator, generator, device, data_loader, classes, mode,
+def run(bert,
+        discriminator, generator,
+        # discriminator_loss, generator_loss,
+        device, data_loader, classes, mode,
         optimizer_d=None, optimizer_g=None, scheduler=None, epoch=None):
     """
     :param optimizer_d: required if mode == 'train
@@ -62,6 +65,8 @@ def run(bert, discriminator, generator, device, data_loader, classes, mode,
         assert epoch is not None
 
     correct = 0
+    loss_d_total = 0
+    loss_g_total = 0
     cm = np.zeros((len(classes), len(classes)))
 
     if mode == 'train':
@@ -111,10 +116,12 @@ def run(bert, discriminator, generator, device, data_loader, classes, mode,
         # Loss
         loss_d, clf_probs = LossDiscriminator(
             num_classes=len(classes), is_training=mode == 'train'
-        )(
-            D_real_logits, D_real_probs, D_fake_probs.detach(), label, is_labeled_mask)
+        )(D_real_logits, D_real_probs, D_fake_probs.detach(), label, is_labeled_mask)
         loss_g = LossGenerator()(
             D_fake_probs, D_fake_features, D_real_features.detach())
+
+        loss_d_total += loss_d.data.cpu().numpy()
+        loss_g_total += loss_g.data.cpu().numpy()
 
         if mode == 'train':
             # Backprop
@@ -133,9 +140,9 @@ def run(bert, discriminator, generator, device, data_loader, classes, mode,
         correct += num_correct(eval_probs, label[is_labeled_mask])  # TODO: check if per_ex_lossis
         pred = torch.max(eval_probs, 1)[1].data.cpu().numpy()
         cm += confusion_matrix(
-            label[is_labeled_mask].data.cpu().numpy(), pred, labels=list(range(len(classes))))
+            label[is_labeled_mask], pred, labels=list(range(len(classes))))
+        accuracy = correct / (batch_id * data_loader.batch_size + is_labeled_mask.sum().data.cpu().numpy())
 
-        accuracy = correct / (batch_id * data_loader.batch_size + len(label))
         if (batch_id + 1) % config.log_interval == 0:
             logger.info(
                 f"epoch {epoch + 1:2d} batch id {batch_id + 1:3d} "
@@ -159,11 +166,23 @@ def run(bert, discriminator, generator, device, data_loader, classes, mode,
                 'generator': optimizer_g.state_dict()
             }, str(args.fine_tune_save).split('.')[0] + '_optimizer.dict')
 
+    accuracy = correct / len(data_loader.dataset)
+    # tb.add_scalar('Loss_D', loss_d_total, epoch)
+    # tb.add_scalar('Loss_G', loss_g_total, epoch)
+    # tb.add_scalar('Accuracy', accuracy, epoch)
+    #
+    # tb.add_histogram('discriminator.main[-1].bias', discriminator.main[-1].bias, epoch)
+    # tb.add_histogram('discriminator.main[-1].weight', discriminator.main[-1].weight, epoch)
+    # tb.add_histogram('discriminator.main[-1].weight.grad', discriminator.main[-1].weight.grad, epoch)
+    # tb.add_histogram('generator.main[-1].bias', generator.main[-1].bias, epoch)
+    # tb.add_histogram('generator.main[-1].weight', generator.main[-1].weight, epoch)
+    # tb.add_histogram('generator.main[-1].weight.grad', generator.main[-1].weight.grad, epoch)
+
     return {
         # "Examples": example_images,
-        f" Accuracy ({mode})": 100. * correct / len(data_loader.dataset),
-        f" Loss_D ({mode})": loss_d,
-        f" Loss_G ({mode})": loss_g,
+        f" Accuracy ({mode})": accuracy,
+        f" Loss_D ({mode})": loss_d_total,
+        f" Loss_G ({mode})": loss_g_total,
         f" Confusion Matrix ({mode})": ConfusionMatrixDisplay(
             confusion_matrix=cm, display_labels=classes
         ).plot().figure_
@@ -238,7 +257,7 @@ if __name__ == '__main__':
         wandb_run = wandb.init(
             project="ubi_article_sentiment-GANBERT",
             dir=LOG_DIR,
-            name='First code run-through',)
+            name='Testing for weights logging',)
     # tb_writer = SummaryWriter(LOG_DIR / 'tensorboard')
 
     logger.info('Starting train_ganbert.py...')
@@ -429,6 +448,10 @@ if __name__ == '__main__':
     if not args.wandb_off:
         wandb.watch(model_D, log="all")
         wandb.watch(model_G, log="all")
+
+    # tb_writer.add_graph(model_bert)
+    # tb_writer.add_graph(model_D)
+    # tb_writer.add_graph(model_G)
 
     for e in range(config.epochs):
         # 1.4.1 TRAIN
