@@ -77,6 +77,7 @@ def run(bert,
     correct = 0
     loss_d_total = 0
     loss_g_total = 0
+    classes = label_encoder.classes_
     cm = np.zeros((len(classes), len(classes)))
 
     if mode == 'train':
@@ -152,7 +153,10 @@ def run(bert,
         correct += num_correct(eval_probs, label[is_labeled_mask])  # TODO: check if per_ex_lossis
         pred = torch.max(eval_probs, 1)[1].data.cpu().numpy()
         cm += confusion_matrix(
-            label[is_labeled_mask].data.cpu().numpy(), pred, labels=list(range(len(classes))))
+            label[is_labeled_mask].data.cpu().numpy(),
+            pred,
+            labels=label_encoder.transform(label_encoder.classes_)
+        )
         accuracy = correct / (batch_id * data_loader.batch_size + is_labeled_mask.sum().data.cpu().numpy())
 
         if (batch_id + 1) % config.log_interval == 0:
@@ -165,7 +169,6 @@ def run(bert,
                 '\n'.join(
                     [f"{cat:>10} " + ' '.join([f"{int(cnt):10d}" for cnt in row]) for cat, row in zip(classes, cm)])
             )
-
 
     accuracy = correct / len(data_loader.dataset)
     # tb.add_scalar('Loss_D', loss_d_total, epoch)
@@ -495,9 +498,10 @@ if __name__ == '__main__':
             'bert-discriminator': optimizer_D.state_dict(),
             'generator': optimizer_G.state_dict()
         }, run_log_dir / f'optimizers-{e:04d}.dict')
-        if not args.wandb_off:
-            wandb.save(str(run_log_dir / f'models-{e:04d}.dict'))
-            wandb.save(str(run_log_dir / f'optimizers-{e:04d}.dict'))
+        # if not args.wandb_off:
+        #     wandb.save((run_log_dir.cwd() / f'models-{e:04d}.dict').as_posix())
+        #     wandb.save((run_log_dir.cwd() / f'optimizers-{e:04d}.dict').as_posix())
+        logger.info(f"Epoch {e:02d}: state dicts saved to {run_log_dir / f'optimizers-{e:04d}.dict'}")
 
     # Evaluate on test set
     run(model_bert, model_D, model_G, device, test_dataloader,
