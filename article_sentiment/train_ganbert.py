@@ -301,7 +301,7 @@ if __name__ == '__main__':
     config.epochs = args.epochs
     config.max_grad_norm = 1
     config.log_interval = 10
-    config.learning_rate = 5e-5
+    config.learning_rate = 1e-4
     config.dropout_rate = 0.01
     config.seed = args.seed
     config.filter_kw_segment = True
