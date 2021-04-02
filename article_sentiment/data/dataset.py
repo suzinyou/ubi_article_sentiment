@@ -11,6 +11,9 @@ from article_sentiment.data.utils import (
 class SegmentedArticlesDataset(Dataset):
     def __init__(self, dataset, is_labeled, bert_tokenizer, seg_len, shift,
                  pad, pair, filter_kw_segment=False, label_encoder=None):
+        if is_labeled:
+            assert label_encoder is not None, "label_encoder required if is_labeled"
+
         self.is_labeled = is_labeled
         self.transform = nlp.data.BERTSentenceTransform(
             bert_tokenizer, max_seq_length=seg_len+2, pad=pad, pair=pair)
@@ -127,14 +130,17 @@ class BERTDataset(Dataset):
             labels.extend([label] * n_segs)
             is_labeled.extend([True] * n_segs)
 
+        le = labeled_articles_dataset.label_encoder
+
         if unlabeled_articles_dataset is not None:
             for list_of_segs in unlabeled_articles_dataset: # there is no label
                 n_segs = len(list_of_segs)
                 for seg_bert_input in list_of_segs:
                     bert_inputs.append(seg_bert_input)
-                labels.extend([np.int32(0)] * n_segs)  # placeholders
+                labels.extend([np.int32(len(le.classes_))] * n_segs)  # placeholders
                 is_labeled.extend([False] * n_segs)
 
+        cls.label_encoder = le
         return cls(bert_inputs, labels, is_labeled_mask=is_labeled)
 
     @property

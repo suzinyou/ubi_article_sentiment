@@ -48,36 +48,27 @@ logging.basicConfig(
 logger = logging.getLogger('train_bert.py')
 
 
-def run(bert,
-        discriminator, generator,
-        # discriminator_loss, generator_loss,
-        device, data_loader, classes, mode,
+def run(bert, discriminator, generator,
+        device, data_loader, le, mode,
         optimizer_d=None, optimizer_g=None, scheduler=None, epoch=None, tb=None):
     """
     :param bert: BERT nn.module
     :param discriminator: Discriminator nn.module
     :param generator: Generator nn.module
-    :param device: 'cpu' or 'gpu'
+    :param device: 'cpu' or 'cuda'
     :param data_loader: DataLoader
-    :param classes: list of classes reflecting label encoding
+    :param le: instance of sklearn.preprocessing.LabelEncoder
     :param mode: 'train', 'validation' or 'test
-    :param optimizer_d: optimizer for discriminator loss required if mode == 'train'
-    :param optimizer_g: optimizer for generator loss, required if mode == 'train'
-    :param scheduler: scheduler for discriminator, required if mode == 'train'
-    :param epoch: int or None, required if mode == 'train'
-    :param tb: tensorboard SummaryWriter instance, optional
+    :param optimizer_d: optimizer for discriminator loss
+    :param optimizer_g: optimizer for generator loss
+    :param scheduler: scheduler for discriminator
+    :param epoch: int or None
     """
-    assert mode in ('train', 'validation', 'test', 'predict')
-    if mode == 'train':
-        assert optimizer_d is not None
-        assert optimizer_g is not None
-        assert scheduler is not None
-        assert epoch is not None
-
     correct = 0
-    loss_d_total = 0
-    loss_g_total = 0
-    classes = label_encoder.classes_
+    loss_d_running = 0
+    loss_g_running = 0
+    classes = le.classes_
+    N = len(data_loader.dataset)
     cm = np.zeros((len(classes), len(classes)))
 
     if mode == 'train':
@@ -89,7 +80,6 @@ def run(bert,
         discriminator.eval()
         generator.eval()
 
-    # TODO: train_loader must load is_labeled_mask!!!!!!!!
     for batch_id, batch_data in enumerate(tqdm(data_loader)):
         token_ids, valid_length, segment_ids, label, is_labeled_mask = batch_data
 
@@ -155,14 +145,13 @@ def run(bert,
         cm += confusion_matrix(
             label[is_labeled_mask].data.cpu().numpy(),
             pred,
-            labels=label_encoder.transform(label_encoder.classes_)
+            labels=le.transform(classes)
         )
-        accuracy = correct / (batch_id * data_loader.batch_size + is_labeled_mask.sum().data.cpu().numpy())
+        accuracy = correct / (batch_id * this_batch_size + is_labeled_mask.sum().data.cpu().numpy())
 
         if (batch_id + 1) % config.log_interval == 0:
-            logger.info(
-                f"epoch {epoch + 1:2d} batch id {batch_id + 1:3d} "
-                f"loss_d {loss_d.data.cpu().numpy()} loss_g {loss_g.data.cpu().numpy()} train acc {accuracy:.5f}")
+            logger.info(f"epoch {epoch + 1:2d} batch id {batch_id + 1:3d} ")
+            logger.info(f"loss_d {loss_d.data.cpu().numpy()} loss_g {loss_g.data.cpu().numpy()} train acc {accuracy:.5f}")
             logger.info(
                 "Confusion matrix\n" +
                 "True\\Pred " + ' '.join([f"{cat:>10}" for cat in classes]) + "\n" +
@@ -170,90 +159,117 @@ def run(bert,
                     [f"{cat:>10} " + ' '.join([f"{int(cnt):10d}" for cnt in row]) for cat, row in zip(classes, cm)])
             )
 
-    accuracy = correct / len(data_loader.dataset)
-    # tb.add_scalar('Loss_D', loss_d_total, epoch)
-    # tb.add_scalar('Loss_G', loss_g_total, epoch)
-    # tb.add_scalar('Accuracy', accuracy, epoch)
-    #
-    # tb.add_histogram('discriminator.main[-1].bias', discriminator.main[-1].bias, epoch)
-    # tb.add_histogram('discriminator.main[-1].weight', discriminator.main[-1].weight, epoch)
-    # tb.add_histogram('discriminator.main[-1].weight.grad', discriminator.main[-1].weight.grad, epoch)
-    # tb.add_histogram('generator.main[-1].bias', generator.main[-1].bias, epoch)
-    # tb.add_histogram('generator.main[-1].weight', generator.main[-1].weight, epoch)
-    # tb.add_histogram('generator.main[-1].weight.grad', generator.main[-1].weight.grad, epoch)
+    accuracy = correct / N
+    loss_d_epoch = loss_d_running / N
+    loss_g_epoch = loss_g_running / N
+    cm_fig = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=classes).plot().figure_
+
     if not args.wandb_off:
         wandb.log({
             # "Examples": example_images,
             f" Accuracy ({mode})": accuracy,
-            f" Loss_D ({mode})": loss_d_total,
-            f" Loss_G ({mode})": loss_g_total,
-            f" Confusion Matrix ({mode})": ConfusionMatrixDisplay(
-                confusion_matrix=cm, display_labels=classes
-            ).plot().figure_
+            f" Loss_D ({mode})": loss_d_epoch,
+            f" Loss_G ({mode})": loss_g_epoch,
+            f" Confusion Matrix ({mode})": cm_fig
         })
 
 
-# def test(bert, discriminator, generator, device, test_loader, classes, epoch=None, mode='val'):
-#     # example_images = []
-#
-#     bert.eval()
-#     discriminator.eval()
-#     generator.eval()
-#
-#     cm = np.zeros((len(classes), len(classes)))
-#     val_loss = 0.0
-#     correct = 0.0
-#     with torch.no_grad():
-#         for batch_id, (token_ids, valid_length, segment_ids, label, is_labeled_mask) in enumerate(tqdm(test_loader)):
-#             token_ids = token_ids.long().to(device)
-#             segment_ids = segment_ids.long().to(device)
-#             valid_length = valid_length
-#             label = label.long().to(device)
-#
-#             # create attention mask for BERT
-#             attention_mask = torch.zeros_like(token_ids)
-#             for i, v in enumerate(valid_length):
-#                 attention_mask[i][:v] = 1
-#             attention_mask = attention_mask.float().to(device)
-#
-#             # get BERT output
-#             _, pooler = model_bert(
-#                 input_ids=token_ids,
-#                 token_type_ids=segment_ids,
-#                 attention_mask=attention_mask
-#             )
-#
-#             # pass thru discriminator
-#             D_real_features, D_real_logits, D_real_probs = discriminator(pooler)
-#
-#             # pass noise thru generator
-#             # TODO: pass config as param for this function?
-#             z = torch.rand((config.batch_size, config.dim_latent_z))
-#             x_g = model_G(z)
-#             D_fake_features, D_fake_logits, D_fake_probs = discriminator(x_g)
-#
-#             val_loss += nn.CrossEntropyLoss()(out, label).item()
-#             correct += num_correct(out, label)
-#             pred = torch.max(out, 1)[1].data.cpu().numpy()
-#             cm += confusion_matrix(label.data.cpu().numpy(), pred, labels=list(range(len(classes))))
-#
-#     accuracy = 100. * correct / len(test_loader.dataset)
-#
-#     logger.info(f"epoch {epoch + 1:2d} val acc {accuracy:.4f}, loss {val_loss:.5f}")
-#     logger.info(
-#         "Confusion matrix\n" +
-#         "True\\Pred " + ' '.join([f"{cat:>10}" for cat in classes]) + "\n" +
-#         '\n'.join([f"{cat:>10} " + ' '.join([f"{int(cnt):10d}" for cnt in row]) for cat, row in zip(classes, cm)])
-#     )
-#
-#     return {
-#         # "Examples": example_images,
-#         f"{mode} Accuracy": accuracy,
-#         f"{mode} Loss": val_loss,
-#         f"{mode} Confusion Matrix": ConfusionMatrixDisplay(
-#             confusion_matrix=cm, display_labels=classes
-#         ).plot().figure_
-#     }
+def test(bert, discriminator, generator,
+        device, data_loader, le, mode):
+    """
+    :param bert: BERT nn.module
+    :param discriminator: Discriminator nn.module
+    :param generator: Generator nn.module
+    :param device: 'cpu' or 'cuda'
+    :param data_loader: DataLoader
+    :param le: instance of sklearn.preprocessing.LabelEncoder
+    :param mode: {'test', 'validation'}
+    """
+    correct = 0
+    loss_d_running = 0
+    loss_g_running = 0
+    classes = le.classes_
+    N = len(data_loader.dataset)
+    cm = np.zeros((len(classes), len(classes)))
+
+    bert.eval()
+    discriminator.eval()
+    generator.eval()
+
+    with torch.no_grad():
+        for batch_id, batch_data in enumerate(tqdm(data_loader)):
+            token_ids, valid_length, segment_ids, label, is_labeled_mask = batch_data
+
+            token_ids = token_ids.long().to(device)
+            segment_ids = segment_ids.long().to(device)
+            label = label.long().to(device)
+            is_labeled_mask = is_labeled_mask.to(device)
+            this_batch_size = token_ids.size(0)
+
+            # create attention mask for BERT
+            attention_mask = torch.zeros_like(token_ids)
+            for i, v in enumerate(valid_length):
+                attention_mask[i][:v] = 1
+            attention_mask = attention_mask.float().to(device)
+
+            # get BERT output
+            _, pooler = bert(
+                input_ids=token_ids,
+                token_type_ids=segment_ids,
+                attention_mask=attention_mask
+            )
+
+            # pass thru discriminator
+            D_real_features, D_real_logits, D_real_probs = discriminator(pooler)
+
+            # pass noise thru generator
+            z = torch.rand((config.batch_size, config.dim_latent_z)).to(device)
+            x_g = generator(z)
+            D_fake_features, D_fake_logits, D_fake_probs = discriminator(x_g)
+
+            # Loss
+            L_D = LossDiscriminator(num_classes=len(classes), is_training=False, device=device)
+            L_G = LossGenerator()
+            loss_d, clf_probs = L_D(D_real_logits, D_real_probs, D_fake_probs.detach(), label, is_labeled_mask)
+            loss_g = L_G(D_fake_probs, D_fake_features, D_real_features.detach())
+
+            loss_d_running += loss_d.item() * this_batch_size
+            loss_g_running += loss_g.item() * this_batch_size
+
+            # Evaluate
+            eval_probs = clf_probs[is_labeled_mask]
+            correct += num_correct(eval_probs, label[is_labeled_mask])  # TODO: check if per_ex_lossis
+            pred = torch.max(eval_probs, 1)[1].data.cpu().numpy()
+            cm += confusion_matrix(
+                label[is_labeled_mask].data.cpu().numpy(),
+                pred,
+                labels=le.transform(classes)
+            )
+            accuracy = correct / (batch_id * this_batch_size + is_labeled_mask.sum().data.cpu().numpy())
+
+            if (batch_id + 1) % config.log_interval == 0:
+                logger.info(f"batch id {batch_id + 1:3d} ")
+                logger.info(f"loss_d {loss_d.data.cpu().numpy()} loss_g {loss_g.data.cpu().numpy()} train acc {accuracy:.5f}")
+                logger.info(
+                    "Confusion matrix\n" +
+                    "True\\Pred " + ' '.join([f"{cat:>10}" for cat in classes]) + "\n" +
+                    '\n'.join(
+                        [f"{cat:>10} " + ' '.join([f"{int(cnt):10d}" for cnt in row]) for cat, row in zip(classes, cm)])
+                )
+
+    accuracy = correct / N
+    loss_d_epoch = loss_d_running / N
+    loss_g_epoch = loss_g_running / N
+    cm_fig = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=classes).plot().figure_
+
+    if not args.wandb_off:
+        wandb.log({
+            # "Examples": example_images,
+            f" Accuracy ({mode})": accuracy,
+            f" Loss_D ({mode})": loss_d_epoch,
+            f" Loss_G ({mode})": loss_g_epoch,
+            f" Confusion Matrix ({mode})": cm_fig
+        })
 
 
 if __name__ == '__main__':
@@ -469,16 +485,16 @@ if __name__ == '__main__':
             run(
                 model_bert, model_D, model_G, device=device, data_loader=train_dataloader,
                 optimizer_g=optimizer_G, optimizer_d=optimizer_D, scheduler=scheduler_D,
-                epoch=e, classes=label_encoder.classes_, mode='train')
+                epoch=e, le=label_encoder, mode='train')
             if args.device == 'cuda':
                 torch.cuda.empty_cache()
                 logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
 
         # 1.4.2. Validate
         if args.mode in ('validate', 'all'):
-            run(
+            test(
                 model_bert, model_D, model_G, device, val_dataloader,
-                classes=label_encoder.classes_, epoch=e, mode='validation'
+                le=label_encoder, epoch=e, mode='validation'
             )
 
             if args.device == 'cuda':
@@ -504,8 +520,8 @@ if __name__ == '__main__':
         logger.info(f"Epoch {e:02d}: state dicts saved to {run_log_dir / f'optimizers-{e:04d}.dict'}")
 
     # Evaluate on test set
-    run(model_bert, model_D, model_G, device, test_dataloader,
-        classes=label_encoder.classes_, mode='test')
+    test(model_bert, model_D, model_G, device, test_dataloader,
+         le=label_encoder, mode='test')
 
     if args.device == 'cuda':
         torch.cuda.empty_cache()
