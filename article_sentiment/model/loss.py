@@ -22,11 +22,12 @@ class LossDiscriminator(nn.Module):
         :returns: (loss_d, probabilities) where probabilities is the classification prob.
         """
         # loss_d_supervised
-        logits_real = logits_d_sup[:, :-1]  # Assuming the first column is for the 'fake' class
+        logits_real = logits_d_sup[:, :-1]  # last column is reserved for the fake class
         probabilities = self.softmax_clf_real(logits_real)
         log_probabilities = self.log_softmax_clf_real(logits_real)
 
-        one_hot_labels = nn.functional.one_hot(labels, num_classes=self.num_classes)
+        one_hot_labels = nn.functional.one_hot(labels, num_classes=self.num_classes + 1)[:, :-1]
+        # ignore last column: unlabeled real examples are labeled with the number num_classes as a placeholder
 
         if self.is_training:
             per_example_loss = -torch.sum(one_hot_labels * log_probabilities, -1)
@@ -41,8 +42,10 @@ class LossDiscriminator(nn.Module):
             loss_d_supervised = torch.mean(per_example_loss)
 
         # loss_d_unsupervised_real
+        #   All inputs to this class must be real, so we're minimizing the loss to encourage
+        #   predicting 'real' for real examples
         loss_d_unsupervised_real = -torch.mean(torch.log(1 - probs_d_sup[:, -1] + self.epsilon))
-        # Assuming the first column is for the 'fake' class
+        # Assuming the last column is for the 'fake' class
 
         # loss_d_unsupervised_fake
         loss_d_unsupervised_fake = -torch.mean(torch.log(probs_g[:, -1] + self.epsilon))
