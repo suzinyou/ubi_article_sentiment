@@ -87,10 +87,11 @@ def run(bert, discriminator, generator,
         segment_ids = segment_ids.long().to(device)
         label = label.long().to(device)
         is_labeled_mask = is_labeled_mask.to(device)
+        this_batch_size = token_ids.size(0)
 
-        if mode == 'train':
-            optimizer_d.zero_grad()  # TODO: call zero_grad on optimizer or model?
-            optimizer_g.zero_grad()
+        # set grad to zero for this batch
+        optimizer_d.zero_grad()
+        optimizer_g.zero_grad()
 
         # create attention mask for BERT
         attention_mask = torch.zeros_like(token_ids)
@@ -109,7 +110,6 @@ def run(bert, discriminator, generator,
         D_real_features, D_real_logits, D_real_probs = discriminator(pooler)
 
         # pass noise thru generator
-        # TODO: pass config as param for this function?
         z = torch.rand((config.batch_size, config.dim_latent_z)).to(device)
         x_g = generator(z)
         D_fake_features, D_fake_logits, D_fake_probs = discriminator(x_g)
@@ -123,20 +123,19 @@ def run(bert, discriminator, generator,
         loss_d, clf_probs = L_D(D_real_logits, D_real_probs, D_fake_probs.detach(), label, is_labeled_mask)
         loss_g = L_G(D_fake_probs, D_fake_features, D_real_features.detach())
 
-        loss_d_total += loss_d.data.cpu().numpy()
-        loss_g_total += loss_g.data.cpu().numpy()
+        loss_d_running += loss_d.item() * this_batch_size
+        loss_g_running += loss_g.item() * this_batch_size
 
-        if mode == 'train':
-            # Backprop
-            loss_d.backward()
-            # TODO: clip grad norms only for bert??
-            torch.nn.utils.clip_grad_norm_(model_bert.parameters(), config.max_grad_norm)
-            optimizer_d.step()
-            # TODO: when to do scheduler.step()?
-            scheduler.step()  # Update learning rate schedule
+        # Backprop
+        loss_d.backward()
+        # TODO: clip grad norms only for bert??
+        torch.nn.utils.clip_grad_norm_(model_bert.parameters(), config.max_grad_norm)
+        optimizer_d.step()
+        # TODO: when to do scheduler.step()?
+        scheduler.step()  # Update learning rate schedule
 
-            loss_g.backward()
-            optimizer_g.step()
+        loss_g.backward()
+        optimizer_g.step()
 
         # Evaluate
         eval_probs = clf_probs[is_labeled_mask]
