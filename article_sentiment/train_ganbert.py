@@ -24,11 +24,13 @@ from transformers import AdamW
 from transformers import get_linear_schedule_with_warmup
 from sklearn.preprocessing import LabelEncoder
 import matplotlib.pyplot as plt
+
+
 plt.rcParams["font.family"] = 'NanumBarunGothic'
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--device', help="`cpu` vs `gpu`", choices=['cpu', 'cuda'], default='cuda')
+parser.add_argument('--device', help="`cpu` vs `cuda`", choices=['cpu', 'cuda'], default='cuda')
 parser.add_argument('--fine_tune_save', help="save path for fine-tuned BERT classifier",
                     default=PROJECT_DIR / 'models' / 'bert_fine_tuned.dict', type=str)
 parser.add_argument('--test_run', help="test run the code on small sample (2 lines of train and test each)",
@@ -37,10 +39,10 @@ parser.add_argument('--seed', help="random seed for pytorch", default=0, type=in
 parser.add_argument('--warm_start', help='load saved fine-tuned clf and optimizer', action='store_true')
 parser.add_argument('-m', '--mode', help="train mode? val mode? all(both)?", choices=['train', 'validate', 'all'],
                     default='all')
-parser.add_argument('-b', '--batch_size', default=16, type=int)
+# parser.add_argument('-b', '--batch_size', default=16, type=int)
 parser.add_argument('-e', '--epochs', default=3, type=int)
 parser.add_argument('--wandb_off', help="turn off wandb", action='store_true')
-args = parser.parse_args()
+args, unknown = parser.parse_known_args()
 
 logging.basicConfig(
     format='[%(asctime)s][%(name)s][%(levelname)s] %(message)s',
@@ -50,7 +52,7 @@ logger = logging.getLogger('train_bert.py')
 
 def run(bert, discriminator, generator,
         device, data_loader, le, mode,
-        optimizer_d=None, optimizer_g=None, scheduler=None, epoch=None, tb=None):
+        optimizer_d=None, optimizer_g=None, scheduler=None, epoch=None):
     """
     :param bert: BERT nn.module
     :param discriminator: Discriminator nn.module
@@ -244,7 +246,7 @@ def test(bert, discriminator, generator,
                 pred,
                 labels=le.transform(classes)
             )
-            accuracy = correct / (batch_id * this_batch_size + is_labeled_mask.sum().data.cpu().numpy())
+            accuracy = correct / (batch_id * config.batch_size + this_batch_size)
 
             if (batch_id + 1) % config.log_interval == 0:
                 logger.info(f"batch id {batch_id + 1:3d} ")
@@ -272,26 +274,7 @@ def test(bert, discriminator, generator,
 
 
 if __name__ == '__main__':
-    if not args.wandb_off:
-        wandb_run = wandb.init(
-            project="ubi_article_sentiment-GANBERT",
-            dir=LOG_DIR,
-            name='Testing for weights logging',)
-    # tb_writer = SummaryWriter(LOG_DIR / 'tensorboard')
-
     logger.info('Starting train_ganbert.py...')
-
-    # Check arg validity
-    if args.wandb_off:
-        run_id = 'test_run-' + datetime.now().strftime("%y%m%d_%H%M%S")
-    else:
-        run_id = wandb.run.id
-    run_log_dir = LOG_DIR / run_id
-    run_log_dir.mkdir(exist_ok=True, parents=True)
-    # save_dir = Path(args.fine_tune_save).parent
-    # if not os.path.isdir(save_dir):
-    #     raise ValueError(
-    #         f"Check the path in --fine_tune_save option. Directory does not exist: {save_dir}")
 
     if args.warm_start:
         assert os.path.exists(args.fine_tune_save), f"no state dict saved to warm-start at {args.fine_tune_save}"
@@ -299,8 +282,18 @@ if __name__ == '__main__':
     logger.info(f"Args: device={args.device}, test_run={args.test_run}, "
                 f"fine_tune_save={args.fine_tune_save},")
 
-    num_workers = os.cpu_count()
+    num_workers = 1  #os.cpu_count()
     input_size = 768
+
+    if not args.wandb_off:
+        wandb_run = wandb.init(
+            project="ubi_article_sentiment-GANBERT", dir=LOG_DIR)
+        run_id = wandb.run.id
+        # Check arg validity
+    else:
+        run_id = 'test_run-' + datetime.now().strftime("%y%m%d_%H%M%S")
+    run_log_dir = LOG_DIR / run_id
+    run_log_dir.mkdir(exist_ok=True, parents=True)
 
     if args.wandb_off:
         class Config(object):
@@ -309,17 +302,18 @@ if __name__ == '__main__':
         config = Config()
     else:
         config = wandb.config
-    config.segment_len = 200
-    config.overlap = 50
-    config.batch_size = args.batch_size
+
+    # config.segment_len = 200
+    # config.overlap = 50
+    # config.batch_size = 32
     config.warmup_ratio = 0.1
     config.epochs = args.epochs
     config.max_grad_norm = 1
     config.log_interval = 10
-    config.learning_rate = 1e-4
+    # config.learning_rate = 1e-4
     config.dropout_rate = 0.01
     config.seed = args.seed
-    config.filter_kw_segment = True
+    # config.filter_kw_segment = True
     config.dim_latent_z = 100
 
     # Set random seed
@@ -366,19 +360,19 @@ if __name__ == '__main__':
     train_labeled_articles = SegmentedArticlesDataset(
         dataset=labeled_examples, is_labeled=True, label_encoder=label_encoder,
         bert_tokenizer=tok, seg_len=config.segment_len, shift=config.overlap,
-        pad=True, pair=False, filter_kw_segment=config.filter_kw_segment)
+        pad=True, pair=False, filter_kw_segment=config.filter_kw_segment == 'True')
     train_unlabeled_articles = SegmentedArticlesDataset(
         dataset=unlabeled_examples, is_labeled=False,
         bert_tokenizer=tok, seg_len=config.segment_len, shift=config.overlap,
-        pad=True, pair=False, filter_kw_segment=config.filter_kw_segment)
+        pad=True, pair=False, filter_kw_segment=config.filter_kw_segment == 'True')
     val_articles = SegmentedArticlesDataset(
         dataset=val_examples, is_labeled=True,  label_encoder=label_encoder,
         bert_tokenizer=tok, seg_len=config.segment_len, shift=config.overlap,
-        pad=True, pair=False, filter_kw_segment=config.filter_kw_segment)
+        pad=True, pair=False, filter_kw_segment=config.filter_kw_segment == 'True')
     test_articles = SegmentedArticlesDataset(
         dataset=test_examples, is_labeled=True,  label_encoder=label_encoder,
         bert_tokenizer=tok, seg_len=config.segment_len, shift=config.overlap,
-        pad=True, pair=False, filter_kw_segment=config.filter_kw_segment)
+        pad=True, pair=False, filter_kw_segment=config.filter_kw_segment == 'True')
 
     # Create BERTDataset - gives tuple
     #   (   token_ids,          shape: (args.batch_size, config.segment_length)
@@ -439,7 +433,6 @@ if __name__ == '__main__':
 
     # 1.3 Set up training parameters
     #       Prepare optimizer and schedule (linear warmup and decay)
-
     if args.mode in ('train', 'all'):
         no_decay = ['bias', 'LayerNorm.weight']
         bert_decay_params = [p for n, p in model_bert.named_parameters() if not any(nd in n for nd in no_decay)]
