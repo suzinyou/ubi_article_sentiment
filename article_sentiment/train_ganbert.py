@@ -310,7 +310,7 @@ if __name__ == '__main__':
     config.max_grad_norm = 1
     config.log_interval = 10
     # config.learning_rate = 1e-4
-    config.dropout_rate = 0.01
+    config.dropout_rate = 0.1
     config.seed = args.seed
     # config.filter_kw_segment = True
     config.dim_latent_z = 100
