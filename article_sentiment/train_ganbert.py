@@ -1,5 +1,22 @@
 #!/usr/bin/env python
 # coding: utf-8
+import argparse
+import logging
+import os
+from datetime import datetime
+
+import gluonnlp as nlp
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+import wandb
+from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
+from sklearn.preprocessing import LabelEncoder
+from torch.utils.data import DataLoader, WeightedRandomSampler
+from tqdm import tqdm
+from transformers import AdamW
+from transformers import get_linear_schedule_with_warmup
+
 from article_sentiment.data.dataset import SegmentedArticlesDataset, BERTDataset
 from article_sentiment.env import PROJECT_DIR, LOG_DIR
 from article_sentiment.kobert.pytorch_kobert import get_pytorch_kobert_model
@@ -8,26 +25,7 @@ from article_sentiment.model import Discriminator, Generator
 from article_sentiment.model.loss import LossGenerator, LossDiscriminator
 from article_sentiment.utils import num_correct
 
-import argparse
-import logging
-import os
-from datetime import datetime
-
-import gluonnlp as nlp
-import numpy as np
-import torch
-import wandb
-from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
-from torch.utils.data import DataLoader, WeightedRandomSampler
-from tqdm import tqdm
-from transformers import AdamW
-from transformers import get_linear_schedule_with_warmup
-from sklearn.preprocessing import LabelEncoder
-import matplotlib.pyplot as plt
-
-
 plt.rcParams["font.family"] = 'NanumBarunGothic'
-
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--device', help="`cpu` vs `cuda`", choices=['cpu', 'cuda'], default='cuda')
@@ -50,8 +48,7 @@ logging.basicConfig(
 logger = logging.getLogger('train_bert.py')
 
 
-def run(bert, discriminator, generator,
-        device, data_loader, le, mode,
+def run(bert, discriminator, generator, device, data_loader, le, mode,
         optimizer_d=None, optimizer_g=None, scheduler=None, epoch=None):
     """
     :param bert: BERT nn.module
@@ -152,7 +149,8 @@ def run(bert, discriminator, generator,
 
         if (batch_id + 1) % config.log_interval == 0:
             logger.info(f"epoch {epoch + 1:2d} batch id {batch_id + 1:3d} ")
-            logger.info(f"loss_d {loss_d.data.cpu().numpy()} loss_g {loss_g.data.cpu().numpy()} train acc {accuracy:.5f}")
+            logger.info(
+                f"loss_d {loss_d.data.cpu().numpy()} loss_g {loss_g.data.cpu().numpy()} train acc {accuracy:.5f}")
             logger.info(
                 "Confusion matrix\n" +
                 "True\\Pred " + ' '.join([f"{cat:>10}" for cat in classes]) + "\n" +
@@ -175,8 +173,7 @@ def run(bert, discriminator, generator,
         })
 
 
-def test(bert, discriminator, generator,
-        device, data_loader, le, mode):
+def test(bert, discriminator, generator, device, data_loader, le, mode):
     """
     :param bert: BERT nn.module
     :param discriminator: Discriminator nn.module
@@ -250,7 +247,8 @@ def test(bert, discriminator, generator,
 
             if (batch_id + 1) % config.log_interval == 0:
                 logger.info(f"batch id {batch_id + 1:3d} ")
-                logger.info(f"loss_d {loss_d.data.cpu().numpy()} loss_g {loss_g.data.cpu().numpy()} train acc {accuracy:.5f}")
+                logger.info(
+                    f"loss_d {loss_d.data.cpu().numpy()} loss_g {loss_g.data.cpu().numpy()} train acc {accuracy:.5f}")
                 logger.info(
                     "Confusion matrix\n" +
                     "True\\Pred " + ' '.join([f"{cat:>10}" for cat in classes]) + "\n" +
@@ -282,7 +280,7 @@ if __name__ == '__main__':
     logger.info(f"Args: device={args.device}, test_run={args.test_run}, "
                 f"fine_tune_save={args.fine_tune_save},")
 
-    num_workers = 1  #os.cpu_count()
+    num_workers = 1  # os.cpu_count()
     input_size = 768
 
     if not args.wandb_off:
@@ -299,6 +297,7 @@ if __name__ == '__main__':
         class Config(object):
             def __init__(self):
                 pass
+
         config = Config()
     else:
         config = wandb.config
@@ -334,7 +333,7 @@ if __name__ == '__main__':
         n_val_discard = 80 - 16
         n_test_discard = 80 - 16
         n_labeled_discard = n_train_discard + n_val_discard + n_test_discard
-        n_train_unlabeled_discard = 2071 - n_labeled_discard - 16*2
+        n_train_unlabeled_discard = 2071 - n_labeled_discard - 16 * 2
     else:
         n_train_discard = n_train_unlabeled_discard = n_val_discard = n_test_discard = 1
 
@@ -366,11 +365,11 @@ if __name__ == '__main__':
         bert_tokenizer=tok, seg_len=config.segment_len, shift=config.overlap,
         pad=True, pair=False, filter_kw_segment=config.filter_kw_segment == 'True')
     val_articles = SegmentedArticlesDataset(
-        dataset=val_examples, is_labeled=True,  label_encoder=label_encoder,
+        dataset=val_examples, is_labeled=True, label_encoder=label_encoder,
         bert_tokenizer=tok, seg_len=config.segment_len, shift=config.overlap,
         pad=True, pair=False, filter_kw_segment=config.filter_kw_segment == 'True')
     test_articles = SegmentedArticlesDataset(
-        dataset=test_examples, is_labeled=True,  label_encoder=label_encoder,
+        dataset=test_examples, is_labeled=True, label_encoder=label_encoder,
         bert_tokenizer=tok, seg_len=config.segment_len, shift=config.overlap,
         pad=True, pair=False, filter_kw_segment=config.filter_kw_segment == 'True')
 
@@ -400,7 +399,7 @@ if __name__ == '__main__':
     # 1.1 Create DataLoader (
     train_dataloader = DataLoader(
         bert_dataset_train, batch_size=config.batch_size, num_workers=num_workers,
-        sampler=WeightedRandomSampler(bert_dataset_train.sample_weight, len(bert_dataset_train)),)
+        sampler=WeightedRandomSampler(bert_dataset_train.sample_weight, len(bert_dataset_train)), )
     val_dataloader = DataLoader(
         bert_dataset_val, batch_size=config.batch_size, num_workers=num_workers)
     test_dataloader = DataLoader(
