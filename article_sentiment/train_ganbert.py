@@ -280,7 +280,7 @@ if __name__ == '__main__':
     logger.info(f"Args: device={args.device}, test_run={args.test_run}, "
                 f"fine_tune_save={args.fine_tune_save},")
 
-    num_workers = 1  # os.cpu_count()
+    num_workers = os.cpu_count()
     input_size = 768
 
     if not args.wandb_off:
