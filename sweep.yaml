@@ -1,3 +1,4 @@
+project: "ubi_article_sentiment-GANBERT"
 name: "GAN-BERT hyperparam opt"
 description: "Find best hyperparameters for classifying article sentiment using GAN-BERT"
 program: article_sentiment/train_ganbert.py
