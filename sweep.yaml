@@ -1,5 +1,5 @@
-name: GAN-BERT hyperparam opt (test)
-description: Find best hyperparameters for classifying article sentiment using GAN-BERT
+name: "GAN-BERT hyperparam opt"
+description: "Find best hyperparameters for classifying article sentiment using GAN-BERT"
 program: article_sentiment/train_ganbert.py
 method: bayes
 metric:
@@ -7,18 +7,29 @@ metric:
   goal: minimize
 parameters:
   batch_size:
-    values: [16, 32, 64, 128]
+    distribution: q_log_uniform
+    min: 2.77259
+    max: 4.85203
+    q: 1
   learning_rate:
-    min: 0.00005
-    max: 0.1
+    distribution: log_uniform
+    min: -9.90349
+    max: -2.30258
   segment_len:
-    values: [200, 300, 512]
+    distribution: q_log_uniform
+    min: 5.07517
+    max: 6.23832
+    q: 1
   overlap:
-    values: [50, 75, 128]
+    distribution: q_log_uniform
+    min: 3.87120
+    max: 4.85203
+    q: 1
   filter_kw_segment:
     values: ["True", "False"]
 early_terminate:
    type: hyperband
+   min_iter: 3
 command:
   - ${env}
   - python
