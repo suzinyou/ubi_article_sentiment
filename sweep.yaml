@@ -10,16 +10,16 @@ parameters:
   batch_size:
     distribution: q_log_uniform
     min: 2.77259
-    max: 4.15889 
+    max: 3.91202
     q: 1
   learning_rate:
     distribution: log_uniform
-    min: -9.90349
-    max: -4.60517 
+    min: -11.51293
+    max: -5.29831
   segment_len:
     distribution: q_log_uniform
     min: 5.07517
-    max: 6.23832
+    max: 6.23441
     q: 1
   overlap:
     distribution: q_log_uniform
@@ -43,4 +43,4 @@ command:
   - "--mode"
   - "all"
   - "-e"
-  - 10 
+  - 10
