@@ -162,15 +162,16 @@ def run(bert, discriminator, generator, device, data_loader, le, mode,
     loss_d_epoch = loss_d_running / N
     loss_g_epoch = loss_g_running / N
     cm_fig = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=classes).plot().figure_
-
+    res = {
+        # "Examples": example_images,
+        f"Accuracy ({mode})": accuracy,
+        f"Loss_D ({mode})": loss_d_epoch,
+        f"Loss_G ({mode})": loss_g_epoch,
+        f"Confusion Matrix ({mode})": cm_fig
+    }
     if not args.wandb_off:
-        wandb.log({
-            # "Examples": example_images,
-            f" Accuracy ({mode})": accuracy,
-            f" Loss_D ({mode})": loss_d_epoch,
-            f" Loss_G ({mode})": loss_g_epoch,
-            f" Confusion Matrix ({mode})": cm_fig
-        })
+        wandb.log(res, step=epoch)
+    return res
 
 
 def test(bert, discriminator, generator, device, data_loader, le, mode, epoch=None):
@@ -264,14 +265,16 @@ def test(bert, discriminator, generator, device, data_loader, le, mode, epoch=No
     loss_g_epoch = loss_g_running / N
     cm_fig = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=classes).plot().figure_
 
+    res = {
+        # "Examples": example_images,
+        f"Accuracy ({mode})": accuracy,
+        f"Loss_D ({mode})": loss_d_epoch,
+        f"Loss_G ({mode})": loss_g_epoch,
+        f"Confusion Matrix ({mode})": cm_fig
+    }
     if not args.wandb_off:
-        wandb.log({
-            # "Examples": example_images,
-            f" Accuracy ({mode})": accuracy,
-            f" Loss_D ({mode})": loss_d_epoch,
-            f" Loss_G ({mode})": loss_g_epoch,
-            f" Confusion Matrix ({mode})": cm_fig
-        })
+        wandb.log(res, step=epoch)
+    return res
 
 
 if __name__ == '__main__':
@@ -472,25 +475,28 @@ if __name__ == '__main__':
         wandb.watch(model_D, log="all", log_freq=1)
         wandb.watch(model_G, log="all", log_freq=1)
 
+    train_results = []
+    val_results = []
     for e in range(config.epochs):
         # 1.4.1 TRAIN
         logs = {}
         if args.mode in ('train', 'all'):
-            run(
+            train_res = run(
                 model_bert, model_D, model_G, device=device, data_loader=train_dataloader,
                 optimizer_g=optimizer_G, optimizer_d=optimizer_D, scheduler=scheduler_D,
                 epoch=e, le=label_encoder, mode='train')
+            train_results.append(train_res)
             if args.device == 'cuda':
                 torch.cuda.empty_cache()
                 logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
 
         # 1.4.2. Validate
         if args.mode in ('validate', 'all'):
-            test(
+            val_res = test(
                 model_bert, model_D, model_G, device, val_dataloader,
                 le=label_encoder, epoch=e, mode='validation'
             )
-
+            val_results.append(val_res)
             if args.device == 'cuda':
                 torch.cuda.empty_cache()
                 logger.debug(f"Cuda memory summary: {torch.cuda.memory_summary()}")
@@ -498,20 +504,29 @@ if __name__ == '__main__':
             if args.mode == 'validate':
                 break
 
-        logger.info(f"Epoch {e:02d}: Saving state dicts...")
-        torch.save({
-            'bert': model_bert.state_dict(),
-            'discriminator': model_D.state_dict(),
-            'generator': model_G.state_dict()
-        }, run_log_dir / f'models-{e:04d}.dict')  # TODO: use different checkpoint names for each epoch?
-        torch.save({
-            'bert-discriminator': optimizer_D.state_dict(),
-            'generator': optimizer_G.state_dict()
-        }, run_log_dir / f'optimizers-{e:04d}.dict')
-        # if not args.wandb_off:
-        #     wandb.save((run_log_dir.cwd() / f'models-{e:04d}.dict').as_posix())
-        #     wandb.save((run_log_dir.cwd() / f'optimizers-{e:04d}.dict').as_posix())
-        logger.info(f"Epoch {e:02d}: state dicts saved to {run_log_dir / f'optimizers-{e:04d}.dict'}")
+        if e == 0:
+            continue
+
+        has_better_acc = val_results[e-1]['Accuracy (validation)'] < val_res['Accuracy (validation)']
+        has_better_loss = val_results[e - 1]['Loss_D (validation)'] > val_res['Loss_D (validation)']
+        if has_better_acc or has_better_loss:
+            logger.info(f"Epoch {e+1:02d}: Saving state dicts...")
+            torch.save({
+                'bert': model_bert.state_dict(),
+                'discriminator': model_D.state_dict(),
+                'generator': model_G.state_dict()
+            }, run_log_dir / f'models-{e+1:04d}.dict')  # TODO: use different checkpoint names for each epoch?
+            torch.save({
+                'bert-discriminator': optimizer_D.state_dict(),
+                'generator': optimizer_G.state_dict()
+            }, run_log_dir / f'optimizers-{e+1:04d}.dict')
+            if has_better_acc and has_better_loss:
+                os.remove(run_log_dir / f'optimizers-{e:04d}.dict')
+                os.remove(run_log_dir / f'models-{e:04d}.dict')
+            # if not args.wandb_off:
+            #     wandb.save((run_log_dir.cwd() / f'models-{e:04d}.dict').as_posix())
+            #     wandb.save((run_log_dir.cwd() / f'optimizers-{e:04d}.dict').as_posix())
+            logger.info(f"Epoch {e+1:02d}: state dicts saved to {run_log_dir / f'optimizers-{e+1:04d}.dict'}")
 
     # Evaluate on test set
     test(model_bert, model_D, model_G, device=device, data_loader=test_dataloader,
