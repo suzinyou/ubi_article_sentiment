@@ -10,12 +10,12 @@ parameters:
   batch_size:
     distribution: q_log_uniform
     min: 2.77259
-    max: 4.85203
+    max: 4.15889 
     q: 1
   learning_rate:
     distribution: log_uniform
     min: -9.90349
-    max: -2.30258
+    max: -4.60517 
   segment_len:
     distribution: q_log_uniform
     min: 5.07517
@@ -37,10 +37,10 @@ command:
   - ${program}
   - ${args}
   - "--device"
-  - "cpu"
+  - "cuda"
   - "--seed"
   - 42
   - "--mode"
   - "all"
   - "-e"
-  - 1
+  - 10 
