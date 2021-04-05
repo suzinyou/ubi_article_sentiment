@@ -173,7 +173,7 @@ def run(bert, discriminator, generator, device, data_loader, le, mode,
         })
 
 
-def test(bert, discriminator, generator, device, data_loader, le, mode):
+def test(bert, discriminator, generator, device, data_loader, le, mode, epoch=None):
     """
     :param bert: BERT nn.module
     :param discriminator: Discriminator nn.module
@@ -246,7 +246,10 @@ def test(bert, discriminator, generator, device, data_loader, le, mode):
             accuracy = correct / (batch_id * config.batch_size + this_batch_size)
 
             if (batch_id + 1) % config.log_interval == 0:
-                logger.info(f"batch id {batch_id + 1:3d} ")
+                if epoch is not None:
+                    logger.info(f"Epoch {e:02d} batch id {batch_id + 1:3d} ")
+                else:
+                    logger.info(f"Batch id {batch_id + 1:3d} ")
                 logger.info(
                     f"loss_d {loss_d.data.cpu().numpy()} loss_g {loss_g.data.cpu().numpy()} train acc {accuracy:.5f}")
                 logger.info(
@@ -511,7 +514,7 @@ if __name__ == '__main__':
         logger.info(f"Epoch {e:02d}: state dicts saved to {run_log_dir / f'optimizers-{e:04d}.dict'}")
 
     # Evaluate on test set
-    test(model_bert, model_D, model_G, device, test_dataloader,
+    test(model_bert, model_D, model_G, device=device, data_loader=test_dataloader,
          le=label_encoder, mode='test')
 
     if args.device == 'cuda':
