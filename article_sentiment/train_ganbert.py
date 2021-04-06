@@ -249,11 +249,11 @@ def test(bert, discriminator, generator, device, data_loader, le, mode, epoch=No
 
             if (batch_id + 1) % config.log_interval == 0:
                 if epoch is not None:
-                    logger.info(f"Epoch {e:02d} batch id {batch_id + 1:3d} ")
+                    logger.info(f"Epoch {e:2d} batch id {batch_id + 1:3d} ")
                 else:
                     logger.info(f"Batch id {batch_id + 1:3d} ")
                 logger.info(
-                    f"loss_d {loss_d.data.cpu().numpy()} loss_g {loss_g.data.cpu().numpy()} train acc {accuracy:.5f}")
+                    f"loss_d {loss_d.data.cpu().numpy()} loss_g {loss_g.data.cpu().numpy()} {mode} acc {accuracy:.5f}")
                 logger.info(
                     "Confusion matrix\n" +
                     "True\\Pred " + ' '.join([f"{cat:>10}" for cat in classes]) + "\n" +
@@ -270,6 +270,7 @@ def test(bert, discriminator, generator, device, data_loader, le, mode, epoch=No
         # "Examples": example_images,
         f"Accuracy ({mode})": accuracy,
         f"Loss_D ({mode})": loss_d_epoch,
+        "loss_d": loss_d_epoch,
         f"Loss_G ({mode})": loss_g_epoch,
         f"Confusion Matrix ({mode})": cm_fig
     }
@@ -530,8 +531,10 @@ if __name__ == '__main__':
                 'generator': optimizer_G.state_dict()
             }, run_log_dir / f'optimizers-{e+1:04d}.dict')
             if has_better_acc and has_better_loss:
-                os.remove(run_log_dir / f'optimizers-{e:04d}.dict')
-                os.remove(run_log_dir / f'models-{e:04d}.dict')
+                ckpt_path = run_log_dir / f'optimizers-{e:04d}.dict'
+                if os.path.exists(ckpt_path):
+                    os.remove(ckpt_path)
+                    os.remove(run_log_dir / f'models-{e:04d}.dict')
             # if not args.wandb_off:
             #     wandb.save((run_log_dir.cwd() / f'models-{e:04d}.dict').as_posix())
             #     wandb.save((run_log_dir.cwd() / f'optimizers-{e:04d}.dict').as_posix())
