@@ -306,20 +306,20 @@ if __name__ == '__main__':
                 pass
 
         config = Config()
+        config.segment_len = 200
+        config.overlap = 50
+        config.batch_size = 32
+        config.learning_rate = 1e-4
+        config.filter_kw_segment = True
     else:
         config = wandb.config
 
-    # config.segment_len = 200
-    # config.overlap = 50
-    # config.batch_size = 32
     config.warmup_ratio = 0.1
     config.epochs = args.epochs
     config.max_grad_norm = 1
     config.log_interval = 10
-    # config.learning_rate = 1e-4
     config.dropout_rate = 0.1
     config.seed = args.seed
-    # config.filter_kw_segment = True
     config.dim_latent_z = 100
     config.hidden_size_D = 128
     config.mixout = args.mixout

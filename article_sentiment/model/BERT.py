@@ -42,8 +42,8 @@ class BERTMixout(nn.Module):
         for name, module in setattr_tuple_list:
             rsetattr(self.bert, name, module)
 
-    def forward(self, *input, **kwargs):
-        self.bert.forward(*input, **kwargs)
+    def forward(self, input_ids, token_type_ids, attention_mask):
+        self.bert.forward(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
 
 
 class BERTClassifier(nn.Module):
