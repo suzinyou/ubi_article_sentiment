@@ -332,7 +332,7 @@ if __name__ == '__main__':
     logger.info("Loading KoBERT...")
     model_bert, vocab = get_pytorch_kobert_model(ctx=args.device)
     if config.mixout:
-        model_bert = BERTMixout(model_bert, keep_prob=0.9)
+        model_bert = BERTMixout(model_bert, keep_prob=0.9).to(args.device)
     logger.info("Successfully loaded KoBERT.")
 
     # Load data ###############################################################################################
