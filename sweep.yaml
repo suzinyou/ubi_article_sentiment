@@ -44,3 +44,4 @@ command:
   - "all"
   - "-e"
   - 10
+  - "--mixout"

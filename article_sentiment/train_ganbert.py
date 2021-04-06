@@ -21,7 +21,7 @@ from article_sentiment.data.dataset import SegmentedArticlesDataset, BERTDataset
 from article_sentiment.env import PROJECT_DIR, LOG_DIR
 from article_sentiment.kobert.pytorch_kobert import get_pytorch_kobert_model
 from article_sentiment.kobert.utils import get_tokenizer
-from article_sentiment.model import Discriminator, Generator
+from article_sentiment.model import Discriminator, Generator, BERTMixout
 from article_sentiment.model.loss import LossGenerator, LossDiscriminator
 from article_sentiment.utils import num_correct
 
@@ -39,6 +39,7 @@ parser.add_argument('-m', '--mode', help="train mode? val mode? all(both)?", cho
                     default='all')
 # parser.add_argument('-b', '--batch_size', default=16, type=int)
 parser.add_argument('-e', '--epochs', default=3, type=int)
+parser.add_argument('--mixout', action='store_true')
 parser.add_argument('--wandb_off', help="turn off wandb", action='store_true')
 args, unknown = parser.parse_known_args()
 
@@ -305,22 +306,23 @@ if __name__ == '__main__':
                 pass
 
         config = Config()
+        config.segment_len = 200
+        config.overlap = 50
+        config.batch_size = 32
+        config.learning_rate = 1e-4
+        config.filter_kw_segment = True
     else:
         config = wandb.config
 
-    # config.segment_len = 200
-    # config.overlap = 50
-    # config.batch_size = 32
     config.warmup_ratio = 0.1
     config.epochs = args.epochs
     config.max_grad_norm = 1
     config.log_interval = 10
-    # config.learning_rate = 1e-4
     config.dropout_rate = 0.1
     config.seed = args.seed
-    # config.filter_kw_segment = True
     config.dim_latent_z = 100
     config.hidden_size_D = 128
+    config.mixout = args.mixout
 
     # Set random seed
     torch.manual_seed(config.seed)
@@ -329,6 +331,8 @@ if __name__ == '__main__':
     # Load KoBERT ###############################################################################################
     logger.info("Loading KoBERT...")
     model_bert, vocab = get_pytorch_kobert_model(ctx=args.device)
+    if config.mixout:
+        model_bert = BERTMixout(model_bert, keep_prob=0.9).to(args.device)
     logger.info("Successfully loaded KoBERT.")
 
     # Load data ###############################################################################################
@@ -404,9 +408,13 @@ if __name__ == '__main__':
     logger.info("Fine-tuning KoBERT on data!")
 
     # 1.1 Create DataLoader (
+    weighted_random_sampler = WeightedRandomSampler(
+        bert_dataset_train.sample_weight,
+        num_samples=len(bert_dataset_train),
+        replacement=True)
     train_dataloader = DataLoader(
         bert_dataset_train, batch_size=config.batch_size, num_workers=num_workers,
-        sampler=WeightedRandomSampler(bert_dataset_train.sample_weight, len(bert_dataset_train)), )
+        sampler=weighted_random_sampler)
     val_dataloader = DataLoader(
         bert_dataset_val, batch_size=config.batch_size, num_workers=num_workers)
     test_dataloader = DataLoader(
