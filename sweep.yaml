@@ -26,8 +26,6 @@ parameters:
     min: 3.87120
     max: 4.85203
     q: 1
-  filter_kw_segment:
-    values: ["True", "False"]
 early_terminate:
    type: hyperband
    min_iter: 3

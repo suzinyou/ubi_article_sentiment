@@ -323,6 +323,7 @@ if __name__ == '__main__':
     config.seed = args.seed
     config.dim_latent_z = 100
     config.hidden_size_D = 128
+    config.filter_kw_segment = True
     config.mixout = args.mixout
 
     # Set random seed
