@@ -320,6 +320,7 @@ if __name__ == '__main__':
     config.seed = args.seed
     # config.filter_kw_segment = True
     config.dim_latent_z = 100
+    config.hidden_size_D = 128
 
     # Set random seed
     torch.manual_seed(config.seed)
@@ -415,7 +416,7 @@ if __name__ == '__main__':
     # 1.2 Set up GAN-BERT
     model_D = Discriminator(
         dim_bert_out=model_bert.config.hidden_size,
-        dim_hidden=model_bert.config.hidden_size,  # ???
+        dim_hidden=config.hidden_size_D,
         num_hidden_layers=1,
         dr_rate=0.1, num_classes=4, n_gpu=0
     ).to(device)
