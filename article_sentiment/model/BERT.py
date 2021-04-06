@@ -43,7 +43,8 @@ class BERTMixout(nn.Module):
             rsetattr(self.bert, name, module)
 
     def forward(self, input_ids, token_type_ids, attention_mask):
-        self.bert.forward(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
+        return self.bert.forward(
+            input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
 
 
 class BERTClassifier(nn.Module):
