@@ -21,6 +21,7 @@ class BERTMixout(nn.Module):
         super(BERTMixout, self).__init__()
         self.bert = bert
         self.keep_prob = keep_prob
+        self.config = bert.config
 
         setattr_tuple_list = []
         for name, module in bert.named_modules():
